@@ -45,26 +45,21 @@ def ussd_agent(request):
         user_message = data.get('message', '').strip()
         user_lower = user_message.lower()
         
-        print(f" Received: {user_message}")  # Debug log
-        
-        #  Check if this is a DIRECT USSD code query first
+        # Check if this is a DIRECT USSD code query
         if is_direct_ussd_query(user_lower):
             response = generate_direct_ussd_response(user_lower)
-            print(f" Direct response: {response[:100]}...")
             return JsonResponse({"message": response, "type": "text"})
         
-        #  Otherwise, use AI for intelligent responses
+        # Use AI for everything else
         elif GEMINI_API_KEY:
-            print(" Using AI for response...")
             return generate_ai_response(user_message)
         
         # Fallback if no API key
         else:
-            response = generate_direct_ussd_response(user_lower)
+            response = "I can help with Nigerian bank USSD codes. Try asking about specific banks or comparing services."
             return JsonResponse({"message": response, "type": "text"})
         
     except Exception as e:
-        print(f" Error: {e}")
         return JsonResponse({
             "message": "First Bank Balance: *894*00#\nGTB: *737*6*1#\nUBA: *919*00#",
             "type": "text"
@@ -72,22 +67,25 @@ def ussd_agent(request):
 
 def is_direct_ussd_query(user_lower):
     """Check if this is a simple USSD code request"""
-    # Direct code patterns
+    # List of very specific direct query patterns
     direct_patterns = [
-        'balance', 'transfer', 'airtime', 'data',
-        'ussd code', 'code for', 'what is the code',
-        'how to check', 'how do i check'
+        'balance', 'transfer', 'airtime', 'data', 'code'
     ]
     
-    # Bank mentions
-    bank_mentioned = any(bank in user_lower for bank in BANK_USSD_CODES.keys())
+    # Bank names
+    bank_names = list(BANK_USSD_CODES.keys())
     
-    # If specific bank + service mentioned, it's direct
-    if bank_mentioned and any(pattern in user_lower for pattern in direct_patterns):
-        return True
+    # Check if it's a direct "bank + service" query
+    bank_found = any(bank in user_lower for bank in bank_names)
+    service_found = any(pattern in user_lower for pattern in direct_patterns)
     
-    # Very specific code requests
-    if any(pattern in user_lower for pattern in ['code', 'ussd']) and bank_mentioned:
+    # Also check for specific code request patterns
+    code_request = any(pattern in user_lower for pattern in [
+        'ussd code', 'code for', 'what is the code', 'how to check'
+    ])
+    
+    # If it's clearly a direct code request, return True
+    if (bank_found and service_found) or (bank_found and code_request):
         return True
         
     return False
@@ -105,7 +103,7 @@ def generate_direct_ussd_response(user_lower):
             else:
                 return f"{bank_name.title()} USSD Codes:\nMain: {codes['main']}\nBalance: {codes['balance']}\nTransfer: {codes['transfer']}\nAirtime: {codes['airtime']}"
 
-    return "Nigerian Bank USSD Helper\n\nAsk about specific banks: First Bank, GTB, UBA, Access Bank, etc.\nOr ask which bank has the best USSD service."
+    return "Nigerian Bank USSD Helper\n\nAsk about specific banks: First Bank, GTB, UBA, Access Bank, etc."
 
 def generate_ai_response(user_message):
     """Generate AI response for intelligent questions"""
@@ -126,7 +124,7 @@ Available Banks & USSD Codes:
 - Union Bank: *826# (Balance: *826*7#)
 - 10 other Nigerian banks available
 
-Provide a helpful, conversational response. If comparing banks, mention specific strengths. If asking for recommendations, be practical and mention actual USSD codes where relevant."""
+Provide a helpful, conversational response. If comparing banks, mention specific strengths and USSD codes. If asking for recommendations, be practical."""
 
         response = model.generate_content(
             prompt,
@@ -138,7 +136,6 @@ Provide a helpful, conversational response. If comparing banks, mention specific
         )
         
         ai_response = response.text.strip()
-        print(f" AI Response: {ai_response[:100]}...")
         
         return JsonResponse({
             "message": ai_response,
@@ -146,7 +143,6 @@ Provide a helpful, conversational response. If comparing banks, mention specific
         })
         
     except Exception as ai_error:
-        print(f" AI Error: {ai_error}")
         # Fallback to direct response
         return JsonResponse({
             "message": "I can help with Nigerian bank USSD codes. Try asking about specific banks or comparing services.",
@@ -162,7 +158,7 @@ def health_check(request):
         "total_banks": len(BANK_USSD_CODES)
     })
 
-# Test AI specifically
+# AI test endpoint
 @csrf_exempt
 @require_http_methods(["POST"]) 
 def test_ai_direct(request):
@@ -185,3 +181,11 @@ def test_ai_direct(request):
             "ai_working": False,
             "error": str(e)
         }, status=500)
+
+# Simple GET endpoint for testing
+@csrf_exempt
+def test_simple(request):
+    return JsonResponse({
+        "message": "AI Agent is working! Ask me about Nigerian bank USSD codes.",
+        "type": "text"
+    })
