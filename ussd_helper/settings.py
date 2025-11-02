@@ -53,6 +53,8 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    'corsheaders.middleware.CorsMiddleware',
+    'whitenoise.middleware.WhiteNoiseMiddleware',
 ]
 
 ROOT_URLCONF = 'ussd_helper.urls'
@@ -85,6 +87,29 @@ DATABASES = {
         'NAME': BASE_DIR / 'db.sqlite3',
     }
 }
+
+# Railway production settings
+if 'RAILWAY_STATIC_URL' in os.environ:
+    DEBUG = False
+    ALLOWED_HOSTS = ['.railway.app', 'localhost', '127.0.0.1']
+    
+    # Static files
+    STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
+    STATIC_URL = 'static/'
+    
+    # Security settings for production
+    CSRF_TRUSTED_ORIGINS = ['https://*.railway.app']
+    
+    # Database - Use PostgreSQL on Railway
+    if os.environ.get('DATABASE_URL'):
+        import dj_database_url
+        DATABASES['default'] = dj_database_url.config(
+            conn_max_age=600,
+            ssl_require=True
+        )
+else:
+    # Local development
+    ALLOWED_HOSTS = ['*']
 # Password validation
 # https://docs.djangoproject.com/en/4.2/ref/settings/#auth-password-validators
 
@@ -130,27 +155,3 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 CORS_ALLOW_ALL_ORIGINS = True
 CORS_ALLOW_CREDENTIALS = True
 
-if 'RAILWAY_STATIC_URL' in os.environ:
-    DEBUG = False
-    
-    ALLOWED_HOSTS = ['.railway.app', 'localhost', '127.0.0.1']
-    
-    # Static files
-    STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
-    STATIC_URL = 'static/'
-    
-    # Security settings for production
-    CSRF_TRUSTED_ORIGINS = ['https://*.railway.app']
-    
-    # Database (Railway provides PostgreSQL)
-    import dj_database_url
-    DATABASES = {
-        'default': dj_database_url.config(
-            default=os.getenv('DATABASE_URL'),
-            conn_max_age=600,
-            conn_health_checks=True,
-        )
-    }
-else:
-    # Local development
-    ALLOWED_HOSTS = ['*']
