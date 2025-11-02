@@ -23,15 +23,18 @@ GEMINI_API_KEY = os.getenv('GEMINI_API_KEY')
 
 DEBUG = os.getenv('DEBUG', 'False') == 'True'
 
-ALLOWED_HOSTS = [
-    'localhost',
-    '127.0.0.1',
-    '.railway.app', 
-    '.up.railway.app',
-    'web-production-f7377.up.railway.app',
-]
+ALLOWED_HOSTS = ['*']
 
-# Minimal apps - no database apps
+# Disable migrations since we don't need a database
+class DisableMigrations:
+    def __contains__(self, item):
+        return True
+    def __getitem__(self, item):
+        return None
+
+MIGRATION_MODULES = DisableMigrations()
+
+# Minimal apps
 INSTALLED_APPS = [
     'django.contrib.contenttypes',
     'django.contrib.sessions',
@@ -71,7 +74,7 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'ussd_helper.wsgi:application'
 
-# Dummy database - we don't need a real database
+# Database configuration
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.dummy',
@@ -87,9 +90,7 @@ STATIC_URL = 'static/'
 STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
-# CORS settings for Telex.im
 CORS_ALLOW_ALL_ORIGINS = True
-CORS_ALLOW_CREDENTIALS = True
 
 # Production settings
 if os.getenv('RAILWAY_STATIC_URL'):
