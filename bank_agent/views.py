@@ -1,12 +1,11 @@
 import json
 import google.generativeai as genai
 import os
-from django.conf import settings
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
 
-# Configure Gemini AI with your REAL API key
+# Configure Gemini AI
 genai.configure(api_key=os.environ.get('GEMINI_API_KEY'))
 
 BANK_USSD_CODES = {
@@ -33,103 +32,101 @@ BANK_USSD_CODES = {
 @require_http_methods(["POST"])
 def ussd_agent(request):
     """
-    Nigerian Bank USSD Helper 
+    AI Agent for Nigerian Bank USSD Helper
     """
     try:
         data = json.loads(request.body)
-        user_message = data.get('message', '').strip().lower()
+        user_message = data.get('message', '').strip()
         
-        # INSTANT rule-based responses for ALL queries (no AI delays)
-        bank_responses = {
-            "access bank": "Access Bank: Dial *901# for transfers, airtime, bills, balance checks.",
-            "gtb": "GTB: Dial *737# for transfers, airtime, banking services.", 
-            "zenith bank": "Zenith Bank: Dial *966# for transfers, airtime, bills.",
-            "first bank": "First Bank: Dial *894# for transfers, airtime, balance checks.",
-            "uba": "UBA: Dial *919# for transfers, airtime, balance checks.",
-            "polaris bank": "Polaris Bank: Dial *833# for transfers, airtime, balance checks.",
-            "union bank": "Union Bank: Dial *826# for transfers, airtime, balance checks.",
-            "fidelity bank": "Fidelity Bank: Dial *770# for transfers, airtime, balance checks.",
-            "ecobank": "Ecobank: Dial *326# for transfers, airtime, balance checks.",
-            "wema bank": "Wema Bank: Dial *945# for transfers, airtime, balance checks.",
-            "sterling bank": "Sterling Bank: Dial *822# for transfers, airtime, balance checks.",
-            "fcmb": "FCMB: Dial *329# for transfers, airtime, balance checks.",
-            "unity bank": "Unity Bank: Dial *7799# for transfers, airtime, balance checks.",
-            "keystone bank": "Keystone Bank: Dial *7111# for transfers, airtime, balance checks.",
-            "stanbic ibtc bank": "Stanbic IBTC Bank: Dial *909# for transfers, airtime, balance checks.",
-            "jaiz bank": "Jaiz Bank: Dial *773# for transfers, airtime, balance checks.",
-            "heritage bank": "Heritage Bank: Dial *745# for transfers, airtime, balance checks."
-        }
-        
-        # Check for specific bank queries - INSTANT RESPONSE
-        for bank, response in bank_responses.items():
-            if bank in user_message:
-                # Enhanced responses for specific actions
-                if 'balance' in user_message:
-                    balance_responses = {
-                        "uba": "To check UBA balance: Dial *919*6# or use *919# menu options",
-                        "access bank": "To check Access Bank balance: Dial *901*6# or use *901# menu",
-                        "gtb": "To check GTB balance: Dial *737*6*1# or use *737# menu", 
-                        "zenith bank": "To check Zenith Bank balance: Dial *966*6# or use *966# menu",
-                        "first bank": "To check First Bank balance: Dial *894*6# or use *894# menu"
-                    }
-                    return JsonResponse({
-                        "message": balance_responses.get(bank, f"To check balance, dial {response.split('Dial ')[1].split(' ')[0]} and select balance inquiry"),
-                        "type": "text"
-                    })
-                
-                elif 'transfer' in user_message:
-                    transfer_formats = {
-                        "access bank": "Access Bank transfer: Dial *901*Amount*AccountNumber#",
-                        "gtb": "GTB transfer: Dial *737*2*Amount*AccountNumber#",
-                        "uba": "UBA transfer: Dial *919*Amount*AccountNumber#",
-                        "zenith bank": "Zenith Bank transfer: Dial *966*Amount*AccountNumber#", 
-                        "first bank": "First Bank transfer: Dial *894*Amount*AccountNumber#"
-                    }
-                    transfer_response = transfer_formats.get(bank, f"To transfer, dial {response.split('Dial ')[1].split(' ')[0]} and follow transfer options")
-                    return JsonResponse({"message": transfer_response, "type": "text"})
-                
-                elif 'airtime' in user_message:
-                    airtime_formats = {
-                        "access bank": "Buy airtime with Access Bank: Dial *901*Amount*PhoneNumber#",
-                        "uba": "Buy airtime with UBA: Dial *919*Amount*PhoneNumber#", 
-                        "gtb": "Buy airtime with GTB: Dial *737*Amount*PhoneNumber#",
-                        "zenith bank": "Buy airtime with Zenith Bank: Dial *966*Amount*PhoneNumber#",
-                        "first bank": "Buy airtime with First Bank: Dial *894*Amount*PhoneNumber#"
-                    }
-                    airtime_response = airtime_formats.get(bank, f"To buy airtime, dial {response.split('Dial ')[1].split(' ')[0]} and follow airtime purchase options")
-                    return JsonResponse({"message": airtime_response, "type": "text"})
-                
-                else:
-                    # Instant basic bank response
-                    return JsonResponse({"message": response, "type": "text"})
-        
-        # For complex questions, use SIMPLE pre-written responses (no AI delay)
-        if 'compare' in user_message:
+        # Check if API key is available
+        api_key = os.environ.get('GEMINI_API_KEY')
+        if not api_key:
             return JsonResponse({
-                "message": "Most Nigerian banks offer similar USSD services. GTB (*737#) and UBA (*919#) have extensive features. All major banks provide transfers, airtime, and balance checks.",
-                "type": "text"
-            })
-        elif 'shortest' in user_message:
-            return JsonResponse({
-                "message": "Shortest USSD codes: Ecobank (*326#), GTB (*737#), UBA (*919#), Access Bank (*901#).",
-                "type": "text"
-            })
-        elif 'fee' in user_message or 'cost' in user_message:
-            return JsonResponse({
-                "message": "USSD banking: Balance checks are usually free. Transfers may have small fees. Check with your specific bank for exact charges.",
+                "message": "GTB: Dial *737# for transfers, airtime, banking services.",
                 "type": "text"
             })
         
-        # General help - instant response
-        bank_list = ", ".join([bank.title() for bank in list(bank_responses.keys())[:6]])
-        return JsonResponse({
-            "message": f"Nigerian Bank USSD Helper. Available banks: {bank_list}, etc. Ask me about any Nigerian bank!",
-            "type": "text"
-        })
+        # AI Prompt with clear instructions
+        prompt = f"""
+        You are a helpful Nigerian Bank USSD Assistant. Provide accurate USSD codes and helpful information.
+
+        BANK USSD DATABASE:
+        {json.dumps(BANK_USSD_CODES, indent=2)}
+
+        USER QUESTION: {user_message}
+
+        Provide a direct, helpful response with the correct USSD code. Be concise and accurate.
+        """
+        
+        # Use AI with timeout for Telex.im compatibility
+        try:
+            model = genai.GenerativeModel('models/gemini-2.0-flash-lite')
+            response = model.generate_content(
+                prompt,
+                request_options={"timeout": 10}  # 10-second timeout
+            )
+            
+            # Return AI response
+            return JsonResponse({
+                "message": response.text,
+                "type": "text"
+            })
+            
+        except Exception as ai_error:
+            print(f"AI Error: {ai_error}")
+            # Fallback to simple response
+            return fallback_response(user_message)
         
     except Exception as e:
-        # Ultimate instant fallback
-        return JsonResponse({
-            "message": "Nigerian Bank USSD Helper - I provide USSD codes for Nigerian banks.",
-            "type": "text"
-        })
+        print(f"General Error: {e}")
+        return fallback_response(user_message if 'user_message' in locals() else "")
+
+def fallback_response(user_message):
+    """Simple fallback when AI fails"""
+    user_lower = user_message.lower()
+    
+    # Quick bank matching
+    for bank, code in BANK_USSD_CODES.items():
+        if bank in user_lower:
+            if 'balance' in user_lower:
+                return JsonResponse({
+                    "message": f"To check {bank.title()} balance, dial {code} and select balance inquiry.",
+                    "type": "text"
+                })
+            elif 'transfer' in user_lower:
+                return JsonResponse({
+                    "message": f"{bank.title()} transfer: Dial {code[:-1]}*Amount*AccountNumber#",
+                    "type": "text"
+                })
+            elif 'airtime' in user_lower:
+                return JsonResponse({
+                    "message": f"Buy airtime with {bank.title()}: Dial {code[:-1]}*Amount*PhoneNumber#", 
+                    "type": "text"
+                })
+            else:
+                return JsonResponse({
+                    "message": f"{bank.title()}: Dial {code} for transfers, airtime, balance checks.",
+                    "type": "text"
+                })
+    
+    # General help
+    bank_list = ", ".join([bank.title() for bank in list(BANK_USSD_CODES.keys())[:6]])
+    return JsonResponse({
+        "message": f"Nigerian Bank USSD AI Helper. Available banks: {bank_list}. Ask me anything about Nigerian bank USSD codes!",
+        "type": "text"
+    })
+
+@csrf_exempt
+def health_check(request):
+    return JsonResponse({
+        "status": "healthy", 
+        "service": "Nigerian Bank USSD AI Agent",
+        "ai_provider": "Google Gemini"
+    })
+
+@csrf_exempt
+def simple_test(request):
+    return JsonResponse({
+        "message": "AI Agent is working! Ask me about Nigerian bank USSD codes.",
+        "type": "text"
+    })
