@@ -90,3 +90,11 @@ def health_check(request):
         "service": "Nigerian Bank USSD AI Agent",
         "ai_provider": "Google Gemini 2.0 Flash"
     })
+
+@csrf_exempt
+def simple_test(request):
+    """Simple test endpoint without AI"""
+    return JsonResponse({
+        "message": "Service is working! Ask me about Nigerian bank USSD codes.",
+        "type": "text"
+    })

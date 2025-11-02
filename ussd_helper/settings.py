@@ -87,26 +87,25 @@ DATABASES = {
         'NAME': BASE_DIR / 'db.sqlite3',
     }
 }
-
 # Railway production settings
-if 'RAILWAY_STATIC_URL' in os.environ:
+if 'RAILWAY_STATIC_URL' in os.environ or 'DATABASE_URL' in os.environ:
     DEBUG = False
-    ALLOWED_HOSTS = ['.railway.app', 'localhost', '127.0.0.1']
+    ALLOWED_HOSTS = ['web-production-f7377.up.railway.app', '.railway.app', 'localhost', '127.0.0.1']
     
     # Static files
     STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
     STATIC_URL = 'static/'
     
     # Security settings for production
-    CSRF_TRUSTED_ORIGINS = ['https://*.railway.app']
+    CSRF_TRUSTED_ORIGINS = ['https://web-production-f7377.up.railway.app', 'https://*.railway.app']
     
-    # Database - Use PostgreSQL on Railway
-    if os.environ.get('DATABASE_URL'):
-        import dj_database_url
-        DATABASES['default'] = dj_database_url.config(
-            conn_max_age=600,
-            ssl_require=True
-        )
+    # Database - Simple SQLite (avoid PostgreSQL issues)
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': BASE_DIR / 'db.sqlite3',
+        }
+    }
 else:
     # Local development
     ALLOWED_HOSTS = ['*']
