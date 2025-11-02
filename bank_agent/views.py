@@ -8,16 +8,12 @@ from django.views.decorators.http import require_http_methods
 
 # Configure Gemini AI
 GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY')
-print(f" GEMINI_API_KEY available: {bool(GEMINI_API_KEY)}")
 if GEMINI_API_KEY:
     genai.configure(api_key=GEMINI_API_KEY)
-    print(" Gemini AI configured")
-else:
-    print(" No GEMINI_API_KEY found")
 
 MODEL_NAME = 'gemini-2.0-flash-lite'
 
-# Bank USSD Database (same as before)
+# Bank USSD Database
 BANK_USSD_CODES = {
     'access bank': {'balance': '*901*00#', 'transfer': '*901*Amount*AccountNumber#', 'airtime': '*901*Amount*PhoneNumber#', 'main': '*901#'},
     'gtb': {'balance': '*737*6*1#', 'transfer': '*737*1*Amount*AccountNumber#', 'airtime': '*737*Amount*PhoneNumber#', 'main': '*737#'},
@@ -42,15 +38,14 @@ BANK_USSD_CODES = {
 @require_http_methods(["POST"])
 def ussd_agent(request):
     """
-    Smart AI Agent - With Debug Logging
+    Fixed AI Agent - Correct API Syntax
     """
     try:
         data = json.loads(request.body)
         user_message = data.get('message', '').strip()
         user_lower = user_message.lower()
         
-        print(f" Received: {user_message}")
-        print(f" GEMINI_API_KEY available: {bool(GEMINI_API_KEY)}")
+        print(f"USER QUERY: {user_message}")
         
         # Health check
         if user_lower in ['health', 'test', 'ping', 'status']:
@@ -61,27 +56,22 @@ def ussd_agent(request):
                 "total_banks": len(BANK_USSD_CODES)
             })
         
-        # Check if very simple direct query
-        is_simple = is_very_simple_direct_query(user_lower)
-        print(f"🔍 Is simple direct query: {is_simple}")
-        
         # Try AI first for non-simple queries
-        if GEMINI_API_KEY and not is_simple:
-            print(" Attempting AI response...")
+        if GEMINI_API_KEY and not is_very_simple_direct_query(user_lower):
+            print("ATTEMPTING AI RESPONSE...")
             ai_response = generate_ai_response(user_message)
             if ai_response and len(ai_response) > 20:
-                print(" AI response successful")
+                print("AI RESPONSE SUCCESSFUL")
                 return JsonResponse({"message": ai_response, "type": "text"})
             else:
-                print("❌ AI response failed or too short")
+                print("AI RESPONSE FAILED")
         
         # Fallback to direct response
-        print(" Using direct response fallback")
         response = generate_direct_ussd_response(user_lower)
         return JsonResponse({"message": response, "type": "text"})
         
     except Exception as e:
-        print(f" Main error: {e}")
+        print(f"ERROR: {e}")
         return JsonResponse({
             "message": "First Bank Balance: *894*00#\nGTB Balance: *737*6*1#\nUBA Balance: *919*00#",
             "type": "text"
@@ -118,9 +108,9 @@ def generate_direct_ussd_response(user_lower):
     return "Nigerian Bank USSD Helper. Available banks: Access, GTB, UBA, Zenith, First Bank, and 12 others."
 
 def generate_ai_response(user_message):
-    """Generate AI response with detailed error handling"""
+    """Generate AI response with CORRECT API syntax"""
     try:
-        print(f" Calling Gemini AI with model: {MODEL_NAME}")
+        print("CALLING GEMINI AI...")
         model = genai.GenerativeModel(MODEL_NAME)
         
         prompt = f"""You are a Nigerian banking expert. Answer this question helpfully:
@@ -139,26 +129,26 @@ Nigerian Bank USSD Codes:
 
 Provide a helpful response about Nigerian bank USSD services."""
 
-        print(" Sending request to Gemini...")
+        # FIXED: Remove request_options parameter
         response = model.generate_content(
             prompt,
             generation_config=genai.types.GenerationConfig(
                 max_output_tokens=400,
                 temperature=0.7
-            ),
-            request_options={"timeout": 10}
+            )
+            # REMOVED: request_options={"timeout": 10}
         )
         
         ai_response = response.text.strip()
-        print(f" AI Response received: {ai_response[:100]}...")
+        print(f"AI RESPONSE: {ai_response[:100]}...")
         
         return ai_response
         
     except Exception as ai_error:
-        print(f" AI Error details: {type(ai_error).__name__}: {ai_error}")
+        print(f"AI ERROR: {ai_error}")
         return None
 
-# Test endpoint to check AI directly
+# Add the missing test-ai endpoint
 @csrf_exempt
 @require_http_methods(["POST"])
 def test_ai(request):
@@ -169,8 +159,7 @@ def test_ai(request):
     try:
         model = genai.GenerativeModel(MODEL_NAME)
         response = model.generate_content(
-            "What is 2+2? Answer in one word.",
-            request_options={"timeout": 5}
+            "What is 2+2? Answer with one number only."
         )
         return JsonResponse({
             "ai_working": True,
@@ -180,6 +169,5 @@ def test_ai(request):
     except Exception as e:
         return JsonResponse({
             "ai_working": False,
-            "error": str(e),
-            "error_type": type(e).__name__
+            "error": str(e)
         }, status=500)
