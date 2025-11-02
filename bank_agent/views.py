@@ -1,11 +1,13 @@
 import json
 import google.generativeai as genai
+import os
+from django.conf import settings
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
 
 # Configure Gemini AI with your REAL API key
-genai.configure(api_key='AIzaSyBUtsIixFwPQE4LAcpADFq6-zpteOf7ld4')
+genai.configure(api_key=os.environ.get('GEMINI_API_KEY'))
 
 BANK_USSD_CODES = {
     "access bank": "*901#",
