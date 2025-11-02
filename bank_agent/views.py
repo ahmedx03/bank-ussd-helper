@@ -11,7 +11,6 @@ GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY')
 if GEMINI_API_KEY:
     genai.configure(api_key=GEMINI_API_KEY)
 
-# Use the fastest model
 MODEL_NAME = 'gemini-2.0-flash-lite'
 
 @csrf_exempt
@@ -20,154 +19,145 @@ def ussd_agent(request):
     """
     Fast AI Agent for Nigerian Bank USSD Codes
     """
-    start_time = time.time()
-    
     try:
         data = json.loads(request.body)
         user_message = data.get('message', '').strip()
-        
-        # Immediate response for common queries
         user_lower = user_message.lower()
         
-        # Instant responses for fastest performance
-        if 'uba balance' in user_lower:
-            return JsonResponse({
-                "message": "UBA Balance Check: Dial *919*00#\n\nFollow the prompts and enter your UBA PIN to check your account balance.",
-                "type": "text"
-            })
-            
-        if 'uba' in user_lower and 'balance' in user_lower:
-            return JsonResponse({
-                "message": "UBA Balance: *919*00#\nEnter your PIN when prompted to view your account balance.",
-                "type": "text"
-            })
+        # INSTANT responses for all common queries - NO AI delay
+        instant_responses = {
+            'uba balance': "UBA Balance: *919*00#\nDial this code and enter your PIN to check account balance.",
+            'check uba balance': "UBA Balance Check: *919*00#\nFollow the prompts and enter your UBA PIN.",
+            'uba balance check': "UBA Balance: *919*00#\nEnter your PIN when prompted.",
+            'uba ussd': "UBA USSD Banking:\nBalance: *919*00#\nTransfer: *919*3*Amount*Account#\nAirtime: *919*Amount*Phone#\nMain Menu: *919#",
+            'gtb balance': "GTB Balance: *737*6*1#\nDial and follow prompts to view balance.",
+            'gtb ussd': "GTB USSD: *737#\nBalance: *737*6*1#\nTransfer: *737*1*Amount*Account#\nAirtime: *737*Amount*Phone#",
+            'access bank balance': "Access Bank Balance: *901*00#\nEnter your PIN to check balance.",
+            'access bank ussd': "Access Bank: *901#\nBalance: *901*00#\nTransfer: *901*Amount*Account#\nAirtime: *901*Amount*Phone#",
+            'zenith bank balance': "Zenith Bank Balance: *966*00#\nDial and enter PIN for balance.",
+            'first bank balance': "First Bank Balance: *894*00#\nFollow prompts to check account balance."
+        }
+        
+        # Check for instant response matches
+        for key, response in instant_responses.items():
+            if key in user_lower:
+                return JsonResponse({
+                    "message": response,
+                    "type": "text"
+                })
         
         # Check if API key is available
         if not GEMINI_API_KEY:
             return JsonResponse({
-                "message": "UBA Balance Check: *919*00#\nGTB: *737#\nAccess Bank: *901#\nZenith Bank: *966#\nFirst Bank: *894#",
+                "message": "UBA Balance: *919*00#\nGTB: *737#\nAccess Bank: *901#\nSpecify which bank and service you need.",
                 "type": "text"
             })
         
-        # Fast AI Response with optimized prompt
+        # STRICT AI Prompt - No "retrieving" language allowed
         try:
             model = genai.GenerativeModel(MODEL_NAME)
             
-            prompt = f"""User Question: {user_message}
+            prompt = f"""User: {user_message}
 
-You are a Nigerian bank USSD code assistant. Provide direct, accurate USSD codes immediately.
+Provide the exact USSD code immediately. Do NOT say "retrieving", "fetching", "searching", or "looking up". 
 
-Important: 
-- Respond with only the USSD code and brief instructions
-- No introductions or greetings
-- Be specific and accurate
-- Maximum 2 sentences
+CRITICAL: Start with the USSD code directly. No introductory phrases.
 
-Bank USSD Codes:
-- UBA: *919# (Balance: *919*00#)
-- GTB: *737# (Balance: *737*6*1#)
-- Access Bank: *901# (Balance: *901*00#)
-- Zenith Bank: *966# (Balance: *966*00#)
-- First Bank: *894# (Balance: *894*00#)
-- Polaris Bank: *833# (Balance: *833*6#)
-- Union Bank: *826# (Balance: *826*7#)
-- Fidelity Bank: *770# (Balance: *770*00#)
-- Ecobank: *326# (Balance: *326*00#)
+Bank Codes:
+- UBA Balance: *919*00#
+- GTB Balance: *737*6*1# 
+- Access Bank Balance: *901*00#
+- Zenith Bank Balance: *966*00#
+- First Bank Balance: *894*00#
+- UBA Transfer: *919*3*Amount*AccountNumber#
+- GTB Transfer: *737*1*Amount*AccountNumber#
+- UBA Airtime: *919*Amount*PhoneNumber#
 
-Response:"""
+Response must begin with the USSD code or bank name:"""
 
             response = model.generate_content(
                 prompt,
                 generation_config=genai.types.GenerationConfig(
-                    max_output_tokens=100,
+                    max_output_tokens=80,
                     temperature=0.1,
-                    top_p=0.8
+                    top_p=0.7
                 ),
-                request_options={"timeout": 5}
+                request_options={"timeout": 4}
             )
             
             ai_response = response.text.strip()
             
-            if ai_response and len(ai_response) > 10:
+            # Clean the response - remove any "retrieving" language
+            ai_response = ai_response.replace("Retrieving", "").replace("retrieving", "")
+            ai_response = ai_response.replace("Fetching", "").replace("fetching", "")
+            ai_response = ai_response.replace("Searching", "").replace("searching", "")
+            ai_response = ai_response.replace("Looking up", "").replace("looking up", "")
+            
+            if ai_response and len(ai_response) > 5:
                 return JsonResponse({
                     "message": ai_response,
                     "type": "text"
                 })
             else:
-                raise ValueError("AI response too short")
+                raise ValueError("AI response invalid")
             
         except Exception as ai_error:
-            # Smart fallback based on query
             return smart_fallback(user_lower)
         
     except Exception as e:
         return smart_fallback("")
 
 def smart_fallback(user_lower):
-    """Intelligent fallback without emojis"""
-    if not user_lower:
-        return JsonResponse({
-            "message": "UBA Balance: *919*00#\nFor other banks, specify which bank you need.",
-            "type": "text"
-        })
-    
-    # UBA responses
+    """Instant fallback responses"""
     if 'uba' in user_lower:
         if 'balance' in user_lower:
             return JsonResponse({
-                "message": "UBA Balance Check: Dial *919*00#\nFollow the prompts and enter your UBA PIN.",
+                "message": "UBA Balance: *919*00#\nDial and enter PIN to check balance.",
                 "type": "text"
             })
         elif 'transfer' in user_lower:
             return JsonResponse({
-                "message": "UBA Transfer: Dial *919*3*Amount*AccountNumber#\nReplace Amount and AccountNumber with actual values.",
-                "type": "text"
-            })
-        elif 'airtime' in user_lower:
-            return JsonResponse({
-                "message": "UBA Airtime: Dial *919*Amount*PhoneNumber#\nReplace Amount and PhoneNumber with actual values.",
+                "message": "UBA Transfer: *919*3*Amount*AccountNumber#\nReplace Amount and AccountNumber.",
                 "type": "text"
             })
         else:
             return JsonResponse({
-                "message": "UBA USSD Codes:\nBalance: *919*00#\nTransfer: *919*3*Amount*Account#\nAirtime: *919*Amount*Phone#\nData: *919*14#",
+                "message": "UBA USSD Codes:\nBalance: *919*00#\nTransfer: *919*3*Amount*Account#\nAirtime: *919*Amount*Phone#",
                 "type": "text"
             })
     
-    # GTB responses
     elif 'gtb' in user_lower:
         if 'balance' in user_lower:
             return JsonResponse({
-                "message": "GTB Balance: Dial *737*6*1#\nFollow the prompts to view your account balance.",
+                "message": "GTB Balance: *737*6*1#\nDial to check account balance.",
                 "type": "text"
             })
         else:
             return JsonResponse({
-                "message": "GTB USSD: *737#\nBalance: *737*6*1#\nTransfer: *737*1*Amount*Account#\nAirtime: *737*Amount*Phone#",
+                "message": "GTB USSD: *737#\nBalance: *737*6*1#\nTransfer: *737*1*Amount*Account#",
                 "type": "text"
             })
     
-    # Access Bank
     elif 'access' in user_lower:
-        if 'balance' in user_lower:
-            return JsonResponse({
-                "message": "Access Bank Balance: Dial *901*00#\nEnter your PIN to check balance.",
-                "type": "text"
-            })
-        else:
-            return JsonResponse({
-                "message": "Access Bank: *901#\nBalance: *901*00#\nTransfer: *901*Amount*Account#\nAirtime: *901*Amount*Phone#",
-                "type": "text"
-            })
+        return JsonResponse({
+            "message": "Access Bank: *901#\nBalance: *901*00#\nTransfer: *901*Amount*Account#",
+            "type": "text"
+        })
     
-    # General bank list
-    banks = [
-        "UBA: *919#", "GTB: *737#", "Access Bank: *901#", 
-        "Zenith Bank: *966#", "First Bank: *894#", "Polaris Bank: *833#"
-    ]
+    elif 'zenith' in user_lower:
+        return JsonResponse({
+            "message": "Zenith Bank: *966#\nBalance: *966*00#\nTransfer services available.",
+            "type": "text"
+        })
+    
+    elif 'first bank' in user_lower:
+        return JsonResponse({
+            "message": "First Bank: *894#\nBalance: *894*00#\nTransfer: *894*Amount*Account#",
+            "type": "text"
+        })
     
     return JsonResponse({
-        "message": f"Bank USSD Codes: {', '.join(banks[:4])}. Specify which bank you need help with.",
+        "message": "UBA: *919*00# for balance\nGTB: *737# for services\nAccess Bank: *901#\nSpecify bank and service needed.",
         "type": "text"
     })
 
@@ -175,16 +165,6 @@ def smart_fallback(user_lower):
 def health_check(request):
     return JsonResponse({
         "status": "healthy", 
-        "service": "Nigerian Bank USSD AI Agent",
-        "model": MODEL_NAME,
-        "ai_enabled": bool(GEMINI_API_KEY)
-    })
-
-@csrf_exempt
-@require_http_methods(["POST"])
-def test_direct(request):
-    """Direct test endpoint"""
-    return JsonResponse({
-        "message": "UBA Balance Check USSD Code: *919*00#\nDial this code and follow the prompts to check your account balance.",
-        "type": "text"
+        "service": "Instant USSD AI Agent",
+        "model": MODEL_NAME
     })
