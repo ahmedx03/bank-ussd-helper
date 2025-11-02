@@ -38,14 +38,14 @@ BANK_USSD_CODES = {
 @require_http_methods(["POST"])
 def ussd_agent(request):
     """
-    Smart AI Agent - Uses AI for intelligent questions, direct for codes
+    Smart AI Agent - AI First, Direct Second approach
     """
     try:
         data = json.loads(request.body)
         user_message = data.get('message', '').strip()
         user_lower = user_message.lower()
         
-        # First, check if this is a health check or test message
+        # Health check
         if user_lower in ['health', 'test', 'ping', 'status']:
             return JsonResponse({
                 "status": "healthy",
@@ -54,63 +54,45 @@ def ussd_agent(request):
                 "total_banks": len(BANK_USSD_CODES)
             })
         
-        # Check if this is a CLEAR direct USSD code query
-        if is_clear_direct_query(user_lower):
-            response = generate_direct_ussd_response(user_lower)
-            return JsonResponse({"message": response, "type": "text"})
-        
-        # Use AI for everything else if API key is available
+        # SIMPLE LOGIC: Try AI first for almost everything
         if GEMINI_API_KEY:
-            ai_response = generate_ai_response(user_message)
-            if ai_response and len(ai_response) > 10:  # Make sure we got a valid response
-                return JsonResponse({"message": ai_response, "type": "text"})
+            # Only skip AI for VERY simple direct queries
+            if not is_very_simple_direct_query(user_lower):
+                ai_response = generate_ai_response(user_message)
+                if ai_response and len(ai_response) > 20:  # Valid AI response
+                    return JsonResponse({"message": ai_response, "type": "text"})
         
         # Fallback to direct response
         response = generate_direct_ussd_response(user_lower)
         return JsonResponse({"message": response, "type": "text"})
         
     except Exception as e:
-        # Ultimate fallback
         return JsonResponse({
-            "message": "First Bank Balance: *894*00#\nGTB Balance: *737*6*1#\nUBA Balance: *919*00#\nAccess Bank: *901*00#",
+            "message": "First Bank Balance: *894*00#\nGTB Balance: *737*6*1#\nUBA Balance: *919*00#",
             "type": "text"
         })
 
-def is_clear_direct_query(user_lower):
+def is_very_simple_direct_query(user_lower):
     """
-    Only return True for VERY CLEAR direct USSD code requests
+    Only return True for VERY simple direct queries
+    Example: "uba balance", "gtb transfer", "access bank airtime"
     """
-    # Very specific direct query patterns
-    direct_patterns = [
-        'balance code', 'transfer code', 'airtime code', 
-        'ussd code', 'code for', 'what is the code',
-        'how to check balance', 'how do i check balance'
+    # Very simple patterns only
+    simple_patterns = [
+        'balance', 'transfer', 'airtime', 'data'
     ]
     
-    # Check for exact direct patterns
-    if any(pattern in user_lower for pattern in direct_patterns):
-        return True
-    
-    # Check for bank + simple service word (not AI words)
     banks = list(BANK_USSD_CODES.keys())
-    simple_services = ['balance', 'transfer', 'airtime', 'data']
-    
     bank_found = any(bank in user_lower for bank in banks)
-    simple_service_found = any(service in user_lower for service in simple_services)
+    service_found = any(pattern in user_lower for pattern in simple_patterns)
     
-    # AI keywords that should NOT trigger direct response
-    ai_keywords = [
-        'compare', 'which', 'best', 'easiest', 'recommend',
-        'difference', 'pros', 'cons', 'should i', 'what\'s the best',
-        'better', 'versus', 'vs'
-    ]
+    # Only direct if it's exactly bank + service, nothing more complex
+    if bank_found and service_found:
+        # Count words - if it's just 2-3 words, it's probably direct
+        words = user_lower.split()
+        if len(words) <= 3:
+            return True
     
-    ai_keyword_found = any(keyword in user_lower for keyword in ai_keywords)
-    
-    # If it's a simple bank+service query WITHOUT AI keywords, it's direct
-    if bank_found and simple_service_found and not ai_keyword_found:
-        return True
-        
     return False
 
 def generate_direct_ussd_response(user_lower):
@@ -126,28 +108,28 @@ def generate_direct_ussd_response(user_lower):
             else:
                 return f"{bank_name.title()} USSD Codes:\nMain: {codes['main']}\nBalance: {codes['balance']}\nTransfer: {codes['transfer']}\nAirtime: {codes['airtime']}"
     
-    return "Nigerian Bank USSD Helper. Ask about specific banks like First Bank, GTB, UBA for balance, transfer, or airtime codes."
+    return "Nigerian Bank USSD Helper. Available banks: Access, GTB, UBA, Zenith, First Bank, and 12 others."
 
 def generate_ai_response(user_message):
     """Generate AI response for intelligent questions"""
     try:
         model = genai.GenerativeModel(MODEL_NAME)
         
-        prompt = f"""You are a helpful Nigerian banking expert. Answer this question naturally and helpfully.
+        prompt = f"""You are a Nigerian banking expert. Answer this question helpfully:
 
-User Question: "{user_message}"
+User: {user_message}
 
-Available Nigerian Banks & USSD Codes:
+Nigerian Bank USSD Codes:
 - Access Bank: *901# (Balance: *901*00#)
-- GTB: *737# (Balance: *737*6*1#) 
+- GTB: *737# (Balance: *737*6*1#)
 - Zenith Bank: *966# (Balance: *966*00#)
 - First Bank: *894# (Balance: *894*00#)
 - UBA: *919# (Balance: *919*00#)
 - Polaris Bank: *833# (Balance: *833*6#)
 - Union Bank: *826# (Balance: *826*7#)
-- 10 other Nigerian banks available
+- 10 other banks available
 
-Provide a helpful, conversational response. If comparing banks, mention specific strengths. If asking for recommendations, be practical and mention actual USSD codes where relevant."""
+Provide a helpful response about Nigerian bank USSD services. Be specific and mention USSD codes when relevant."""
 
         response = model.generate_content(
             prompt,
