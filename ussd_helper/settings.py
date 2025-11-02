@@ -15,6 +15,7 @@ Django settings for ussd_helper project.
 
 from pathlib import Path
 import os
+import sys
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -22,36 +23,33 @@ SECRET_KEY = os.getenv('SECRET_KEY', 'django-insecure-dev-key')
 GEMINI_API_KEY = os.getenv('GEMINI_API_KEY')
 
 DEBUG = os.getenv('DEBUG', 'False') == 'True'
-
 ALLOWED_HOSTS = ['*']
 
-# Disable migrations since we don't need a database
-class DisableMigrations:
-    def __contains__(self, item):
-        return True
-    def __getitem__(self, item):
-        return None
+# COMPLETELY DISABLE DATABASE
+DATABASES = {
+    'default': {
+        'ENGINE': 'django.db.backends.dummy',
+    }
+}
 
-MIGRATION_MODULES = DisableMigrations()
+# Disable all database-related functionality
+DATABASE_ROUTERS = []
+DEFAULT_AUTO_FIELD = None
 
-# Minimal apps
+# Minimal apps - NO DATABASE APPS
 INSTALLED_APPS = [
-    'django.contrib.contenttypes',
-    'django.contrib.sessions',
-    'django.contrib.messages',
     'django.contrib.staticfiles',
     'corsheaders',
     'bank_agent',
 ]
 
+# Minimal middleware - NO DATABASE MIDDLEWARE
 MIDDLEWARE = [
     'corsheaders.middleware.CorsMiddleware',
     'django.middleware.security.SecurityMiddleware',
     'whitenoise.middleware.WhiteNoiseMiddleware',
-    'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
-    'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
 
@@ -66,7 +64,6 @@ TEMPLATES = [
             'context_processors': [
                 'django.template.context_processors.debug',
                 'django.template.context_processors.request',
-                'django.contrib.messages.context_processors.messages',
             ],
         },
     },
@@ -74,12 +71,8 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'ussd_helper.wsgi:application'
 
-# Database configuration
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.dummy',
-    }
-}
+# No password validators
+AUTH_PASSWORD_VALIDATORS = []
 
 LANGUAGE_CODE = 'en-us'
 TIME_ZONE = 'UTC'
@@ -88,15 +81,25 @@ USE_TZ = True
 
 STATIC_URL = 'static/'
 STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
-DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 CORS_ALLOW_ALL_ORIGINS = True
+
+# Monkey-patch to prevent migration commands
+def disable_migrations():
+    return None
+
+from django.core.management.commands import migrate
+original_handle = migrate.Command.handle
+
+def fake_handle(self, *args, **options):
+    self.stdout.write("Migrations disabled - no database needed")
+    return
+
+migrate.Command.handle = fake_handle
 
 # Production settings
 if os.getenv('RAILWAY_STATIC_URL'):
     DEBUG = False
     SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
     SECURE_SSL_REDIRECT = True
-    SESSION_COOKIE_SECURE = True
-    CSRF_COOKIE_SECURE = True
-    CSRF_TRUSTED_ORIGINS = ['https://web-production-f7377.up.railway.app', 'https://*.railway.app']
+    CSRF_TRUSTED_ORIGINS = ['https://web-production-f7377.up.railway.app']
