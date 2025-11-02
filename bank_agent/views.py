@@ -45,53 +45,52 @@ def ussd_agent(request):
         user_message = data.get('message', '').strip()
         user_lower = user_message.lower()
         
-        # DIRECT RESPONSES for USSD code queries (NO AI)
-        if is_ussd_code_query(user_lower):
+        print(f" Received: {user_message}")  # Debug log
+        
+        #  Check if this is a DIRECT USSD code query first
+        if is_direct_ussd_query(user_lower):
             response = generate_direct_ussd_response(user_lower)
+            print(f" Direct response: {response[:100]}...")
             return JsonResponse({"message": response, "type": "text"})
         
-        # AI RESPONSES for intelligent questions (USES AI)
-        elif GEMINI_API_KEY and is_ai_question(user_lower):
+        #  Otherwise, use AI for intelligent responses
+        elif GEMINI_API_KEY:
+            print(" Using AI for response...")
             return generate_ai_response(user_message)
         
-        # Default direct response
+        # Fallback if no API key
         else:
             response = generate_direct_ussd_response(user_lower)
             return JsonResponse({"message": response, "type": "text"})
         
     except Exception as e:
+        print(f" Error: {e}")
         return JsonResponse({
             "message": "First Bank Balance: *894*00#\nGTB: *737*6*1#\nUBA: *919*00#",
             "type": "text"
         })
 
-def is_ussd_code_query(user_lower):
-    """Check if this is a direct USSD code request"""
-    code_keywords = ['balance', 'transfer', 'airtime', 'data', 'ussd code', 'code for']
-    bank_keywords = [bank for bank in BANK_USSD_CODES.keys() if bank in user_lower]
-    
-    # If user mentions a bank AND a service, it's a code query
-    if any(bank in user_lower for bank in BANK_USSD_CODES.keys()):
-        if any(keyword in user_lower for keyword in code_keywords):
-            return True
-    
-    # Specific code requests
-    if any(keyword in user_lower for keyword in ['what is', 'how to', 'code', 'ussd']):
-        if any(bank in user_lower for bank in BANK_USSD_CODES.keys()):
-            return True
-    
-    return False
-
-def is_ai_question(user_lower):
-    """Check if this is an intelligent question that needs AI"""
-    ai_keywords = [
-        'compare', 'which is better', 'best', 'easiest', 'recommend',
-        'difference between', 'pros and cons', 'should i use',
-        'how does', 'what can i do', 'services available',
-        'advantages', 'disadvantages', 'which one'
+def is_direct_ussd_query(user_lower):
+    """Check if this is a simple USSD code request"""
+    # Direct code patterns
+    direct_patterns = [
+        'balance', 'transfer', 'airtime', 'data',
+        'ussd code', 'code for', 'what is the code',
+        'how to check', 'how do i check'
     ]
     
-    return any(keyword in user_lower for keyword in ai_keywords)
+    # Bank mentions
+    bank_mentioned = any(bank in user_lower for bank in BANK_USSD_CODES.keys())
+    
+    # If specific bank + service mentioned, it's direct
+    if bank_mentioned and any(pattern in user_lower for pattern in direct_patterns):
+        return True
+    
+    # Very specific code requests
+    if any(pattern in user_lower for pattern in ['code', 'ussd']) and bank_mentioned:
+        return True
+        
+    return False
 
 def generate_direct_ussd_response(user_lower):
     """Direct USSD code responses - NO AI"""
@@ -113,9 +112,9 @@ def generate_ai_response(user_message):
     try:
         model = genai.GenerativeModel(MODEL_NAME)
         
-        prompt = f"""You are a Nigerian banking expert. Answer this question helpfully and accurately.
+        prompt = f"""You are a helpful Nigerian banking expert. Answer this question naturally and helpfully.
 
-User Question: {user_message}
+User Question: "{user_message}"
 
 Available Banks & USSD Codes:
 - Access Bank: *901# (Balance: *901*00#)
@@ -123,28 +122,34 @@ Available Banks & USSD Codes:
 - Zenith Bank: *966# (Balance: *966*00#)
 - First Bank: *894# (Balance: *894*00#)
 - UBA: *919# (Balance: *919*00#)
-- 12 other Nigerian banks available
+- Polaris Bank: *833# (Balance: *833*6#)
+- Union Bank: *826# (Balance: *826*7#)
+- 10 other Nigerian banks available
 
-Provide a helpful, accurate response based on real Nigerian banking knowledge. Be specific and practical."""
+Provide a helpful, conversational response. If comparing banks, mention specific strengths. If asking for recommendations, be practical and mention actual USSD codes where relevant."""
 
         response = model.generate_content(
             prompt,
             generation_config=genai.types.GenerationConfig(
-                max_output_tokens=300,
-                temperature=0.3
+                max_output_tokens=400,
+                temperature=0.7
             ),
             request_options={"timeout": 10}
         )
         
+        ai_response = response.text.strip()
+        print(f" AI Response: {ai_response[:100]}...")
+        
         return JsonResponse({
-            "message": response.text,
+            "message": ai_response,
             "type": "text"
         })
         
     except Exception as ai_error:
+        print(f" AI Error: {ai_error}")
         # Fallback to direct response
         return JsonResponse({
-            "message": "I can help with Nigerian bank USSD codes. Try asking about specific banks like First Bank, GTB, or UBA.",
+            "message": "I can help with Nigerian bank USSD codes. Try asking about specific banks or comparing services.",
             "type": "text"
         })
 
@@ -156,3 +161,27 @@ def health_check(request):
         "ai_enabled": bool(GEMINI_API_KEY),
         "total_banks": len(BANK_USSD_CODES)
     })
+
+# Test AI specifically
+@csrf_exempt
+@require_http_methods(["POST"]) 
+def test_ai_direct(request):
+    """Direct AI test endpoint"""
+    if not GEMINI_API_KEY:
+        return JsonResponse({"error": "No API key"}, status=500)
+    
+    try:
+        model = genai.GenerativeModel(MODEL_NAME)
+        response = model.generate_content(
+            "Which Nigerian bank has the easiest USSD banking? Answer in 2 sentences.",
+            request_options={"timeout": 5}
+        )
+        return JsonResponse({
+            "ai_working": True,
+            "response": response.text
+        })
+    except Exception as e:
+        return JsonResponse({
+            "ai_working": False,
+            "error": str(e)
+        }, status=500)
