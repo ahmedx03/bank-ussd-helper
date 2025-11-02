@@ -8,12 +8,16 @@ from django.views.decorators.http import require_http_methods
 
 # Configure Gemini AI
 GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY')
+print(f" GEMINI_API_KEY available: {bool(GEMINI_API_KEY)}")
 if GEMINI_API_KEY:
     genai.configure(api_key=GEMINI_API_KEY)
+    print(" Gemini AI configured")
+else:
+    print(" No GEMINI_API_KEY found")
 
 MODEL_NAME = 'gemini-2.0-flash-lite'
 
-# Bank USSD Database
+# Bank USSD Database (same as before)
 BANK_USSD_CODES = {
     'access bank': {'balance': '*901*00#', 'transfer': '*901*Amount*AccountNumber#', 'airtime': '*901*Amount*PhoneNumber#', 'main': '*901#'},
     'gtb': {'balance': '*737*6*1#', 'transfer': '*737*1*Amount*AccountNumber#', 'airtime': '*737*Amount*PhoneNumber#', 'main': '*737#'},
@@ -38,12 +42,15 @@ BANK_USSD_CODES = {
 @require_http_methods(["POST"])
 def ussd_agent(request):
     """
-    Smart AI Agent - AI First, Direct Second approach
+    Smart AI Agent - With Debug Logging
     """
     try:
         data = json.loads(request.body)
         user_message = data.get('message', '').strip()
         user_lower = user_message.lower()
+        
+        print(f" Received: {user_message}")
+        print(f" GEMINI_API_KEY available: {bool(GEMINI_API_KEY)}")
         
         # Health check
         if user_lower in ['health', 'test', 'ping', 'status']:
@@ -54,41 +61,41 @@ def ussd_agent(request):
                 "total_banks": len(BANK_USSD_CODES)
             })
         
-        # SIMPLE LOGIC: Try AI first for almost everything
-        if GEMINI_API_KEY:
-            # Only skip AI for VERY simple direct queries
-            if not is_very_simple_direct_query(user_lower):
-                ai_response = generate_ai_response(user_message)
-                if ai_response and len(ai_response) > 20:  # Valid AI response
-                    return JsonResponse({"message": ai_response, "type": "text"})
+        # Check if very simple direct query
+        is_simple = is_very_simple_direct_query(user_lower)
+        print(f"🔍 Is simple direct query: {is_simple}")
+        
+        # Try AI first for non-simple queries
+        if GEMINI_API_KEY and not is_simple:
+            print(" Attempting AI response...")
+            ai_response = generate_ai_response(user_message)
+            if ai_response and len(ai_response) > 20:
+                print(" AI response successful")
+                return JsonResponse({"message": ai_response, "type": "text"})
+            else:
+                print("❌ AI response failed or too short")
         
         # Fallback to direct response
+        print(" Using direct response fallback")
         response = generate_direct_ussd_response(user_lower)
         return JsonResponse({"message": response, "type": "text"})
         
     except Exception as e:
+        print(f" Main error: {e}")
         return JsonResponse({
             "message": "First Bank Balance: *894*00#\nGTB Balance: *737*6*1#\nUBA Balance: *919*00#",
             "type": "text"
         })
 
 def is_very_simple_direct_query(user_lower):
-    """
-    Only return True for VERY simple direct queries
-    Example: "uba balance", "gtb transfer", "access bank airtime"
-    """
-    # Very simple patterns only
-    simple_patterns = [
-        'balance', 'transfer', 'airtime', 'data'
-    ]
+    """Only return True for VERY simple direct queries"""
+    simple_patterns = ['balance', 'transfer', 'airtime', 'data']
     
     banks = list(BANK_USSD_CODES.keys())
     bank_found = any(bank in user_lower for bank in banks)
     service_found = any(pattern in user_lower for pattern in simple_patterns)
     
-    # Only direct if it's exactly bank + service, nothing more complex
     if bank_found and service_found:
-        # Count words - if it's just 2-3 words, it's probably direct
         words = user_lower.split()
         if len(words) <= 3:
             return True
@@ -111,8 +118,9 @@ def generate_direct_ussd_response(user_lower):
     return "Nigerian Bank USSD Helper. Available banks: Access, GTB, UBA, Zenith, First Bank, and 12 others."
 
 def generate_ai_response(user_message):
-    """Generate AI response for intelligent questions"""
+    """Generate AI response with detailed error handling"""
     try:
+        print(f" Calling Gemini AI with model: {MODEL_NAME}")
         model = genai.GenerativeModel(MODEL_NAME)
         
         prompt = f"""You are a Nigerian banking expert. Answer this question helpfully:
@@ -129,8 +137,9 @@ Nigerian Bank USSD Codes:
 - Union Bank: *826# (Balance: *826*7#)
 - 10 other banks available
 
-Provide a helpful response about Nigerian bank USSD services. Be specific and mention USSD codes when relevant."""
+Provide a helpful response about Nigerian bank USSD services."""
 
+        print(" Sending request to Gemini...")
         response = model.generate_content(
             prompt,
             generation_config=genai.types.GenerationConfig(
@@ -140,8 +149,37 @@ Provide a helpful response about Nigerian bank USSD services. Be specific and me
             request_options={"timeout": 10}
         )
         
-        return response.text.strip()
+        ai_response = response.text.strip()
+        print(f" AI Response received: {ai_response[:100]}...")
+        
+        return ai_response
         
     except Exception as ai_error:
-        print(f"AI Error: {ai_error}")
+        print(f" AI Error details: {type(ai_error).__name__}: {ai_error}")
         return None
+
+# Test endpoint to check AI directly
+@csrf_exempt
+@require_http_methods(["POST"])
+def test_ai(request):
+    """Test AI directly"""
+    if not GEMINI_API_KEY:
+        return JsonResponse({"error": "No API key"}, status=500)
+    
+    try:
+        model = genai.GenerativeModel(MODEL_NAME)
+        response = model.generate_content(
+            "What is 2+2? Answer in one word.",
+            request_options={"timeout": 5}
+        )
+        return JsonResponse({
+            "ai_working": True,
+            "response": response.text,
+            "model": MODEL_NAME
+        })
+    except Exception as e:
+        return JsonResponse({
+            "ai_working": False,
+            "error": str(e),
+            "error_type": type(e).__name__
+        }, status=500)
