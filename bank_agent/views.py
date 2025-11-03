@@ -144,7 +144,7 @@ def ussd_agent(request):
                 
                 thread = threading.Thread(target=generate_response)
                 thread.start()
-                thread.join(timeout=10)  # 10 second timeout
+                thread.join(timeout=60)  # 60 second timeout
                 
                 if thread.is_alive():
                     # Thread timed out
