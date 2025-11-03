@@ -97,17 +97,6 @@ Rules:
 def ussd_agent(request):
     """Main AI endpoint for Nigerian Bank USSD assistant"""
     try:
-        # Verify Telex signature (if configured)
-        if not verify_telex_signature(request):
-            return JsonResponse({"error": "Invalid signature"}, status=401)
-
-        data = json.loads(request.body)
-        user_message = data.get('content') or data.get('message', '')
-        user_message = user_message.strip()
-
-        if not user_message:
-            return JsonResponse({"error": "No message provided"}, status=400)
-
         # Health/test messages
         if user_message.lower() in ["ping", "health", "status", "test"]:
             return JsonResponse({
