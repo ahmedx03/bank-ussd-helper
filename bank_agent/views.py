@@ -15,7 +15,6 @@ import google.generativeai as genai
 load_dotenv()
 
 # Gemini AI Configuration
-
 GEMINI_API_KEY = os.getenv('GEMINI_API_KEY')
 if GEMINI_API_KEY:
     genai.configure(api_key=GEMINI_API_KEY)
@@ -25,7 +24,7 @@ else:
 
 MODEL_NAME = 'gemini-2.0-flash-lite'
 
-#  Bank USSD Code Database
+# Bank USSD Code Database
 BANK_USSD_CODES = {
     'access bank': {'balance': '*901*00#', 'transfer': '*901*Amount*AccountNumber#', 'airtime': '*901*Amount*PhoneNumber#', 'main': '*901#'},
     'gtb': {'balance': '*737*6*1#', 'transfer': '*737*1*Amount*AccountNumber#', 'airtime': '*737*Amount*PhoneNumber#', 'main': '*737#'},
@@ -35,13 +34,13 @@ BANK_USSD_CODES = {
 }
 
 # In-memory Cache (Simple)
-CACHE = {}  # key: user_message.lower(), value: response
+CACHE = {}
 
 def get_cached_response(message):
     return CACHE.get(message.lower())
 
 def set_cached_response(message, response):
-    if len(CACHE) > 50:  # avoid memory bloat
+    if len(CACHE) > 50:
         CACHE.clear()
     CACHE[message.lower()] = response
 
@@ -58,7 +57,6 @@ def log_interaction(user_message, ai_response, source="unknown"):
     }
     with open(LOG_FILE, "a", encoding="utf-8") as f:
         f.write(json.dumps(log_entry) + "\n")
-
 
 # Gemini AI Function
 def generate_ai_response(user_message):
@@ -88,7 +86,7 @@ Rules:
             ai_response = ai_response[:1000] + "..."
         return ai_response
     except Exception as e:
-        print(f" AI generation error: {e}")
+        print(f"AI generation error: {e}")
         return "Access Bank: *901*00# | GTB: *737*6*1# | UBA: *919*00# | Zenith: *966*00#"
 
 # Main AI Endpoint
@@ -97,6 +95,23 @@ Rules:
 def ussd_agent(request):
     """Main AI endpoint for Nigerian Bank USSD assistant"""
     try:
+        # Parse the request data FIRST
+        data = json.loads(request.body)
+        
+        # Get user_message from the request data
+        user_message = data.get('content', '').strip()
+        if not user_message:
+            user_message = data.get('message', '').strip()
+            
+        print(f"Received: {user_message}")
+        
+        # Handle empty messages
+        if not user_message:
+            return JsonResponse({
+                "content": "I'm your Nigerian banking AI assistant. Try: 'UBA balance' or 'GTB transfer code'.",
+                "type": "text"
+            })
+
         # Health/test messages
         if user_message.lower() in ["ping", "health", "status", "test"]:
             return JsonResponse({
@@ -109,10 +124,10 @@ def ussd_agent(request):
         # Use cached result if available
         cached = get_cached_response(user_message)
         if cached:
-            print(f"🧠 Cache hit for '{user_message}'")
+            print(f"Cache hit for '{user_message}'")
             return JsonResponse({"content": cached, "cached": True, "type": "text"})
 
-        print(f" Processing: {user_message}")
+        print(f"Processing: {user_message}")
 
         ai_response = None
         def worker():
@@ -132,8 +147,14 @@ def ussd_agent(request):
 
         return JsonResponse({"content": ai_response, "cached": False, "type": "text"})
 
+    except json.JSONDecodeError:
+        print("Invalid JSON received")
+        return JsonResponse({
+            "content": "I'm your Nigerian banking assistant. How can I help?",
+            "type": "text"
+        })
     except Exception as e:
-        print(f" Error: {e}")
+        print(f"Error: {e}")
         return JsonResponse({"content": "Something went wrong. Try again."}, status=500)
 
 # A2A Health Endpoint
@@ -151,6 +172,6 @@ def a2a_health(request):
 def index(request):
     """Simple landing route"""
     return HttpResponse(
-        "<h3> Nigerian Bank USSD AI Agent</h3><p>Status: Running</p>",
+        "<h3>Nigerian Bank USSD AI Agent</h3><p>Status: Running</p>",
         content_type="text/html"
     )
