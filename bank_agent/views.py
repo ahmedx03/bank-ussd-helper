@@ -5,9 +5,13 @@ import time
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
+from dotenv import load_dotenv  # ADD THIS
+
+# Load environment variables from .env file
+load_dotenv() 
 
 # Configure Gemini AI with API key from environment variables
-GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY')
+GEMINI_API_KEY = os.getenv('GEMINI_API_KEY')
 if GEMINI_API_KEY:
     genai.configure(api_key=GEMINI_API_KEY)
 
