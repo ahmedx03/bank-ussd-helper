@@ -85,35 +85,77 @@ def ussd_agent(request):
             "type": "text"
         })
 def is_very_simple_direct_query(user_lower):
-    """Only return True for VERY simple direct queries"""
-    simple_patterns = ['balance', 'transfer', 'airtime', 'data']
+    """Only use direct responses for very basic code requests"""
+    # Very specific patterns that should get instant codes
+    direct_patterns = [
+        'balance code', 'transfer code', 'airtime code', 
+        'ussd code', 'code for', 'what is the code'
+    ]
     
-    banks = list(BANK_USSD_CODES.keys())
-    bank_found = any(bank in user_lower for bank in banks)
-    service_found = any(pattern in user_lower for pattern in simple_patterns)
+    # Check for exact direct patterns
+    if any(pattern in user_lower for pattern in direct_patterns):
+        return True
     
-    if bank_found and service_found:
-        words = user_lower.split()
-        if len(words) <= 3:
-            return True
-    
+    # For everything else (including comparisons), use AI
     return False
+def generate_ai_response(user_message):
+    """Generate AI responses with STRICT instructions to avoid 'fetching' language"""
+    try:
+        print("CALLING GEMINI AI...")
+        model = genai.GenerativeModel(MODEL_NAME)
+        
+        prompt = f"""CRITICAL: DO NOT use words like "fetching", "retrieving", "searching", "looking up", "getting", or "finding". Provide the answer DIRECTLY.
 
-def generate_direct_ussd_response(user_lower):
-    """Direct USSD code responses"""
-    for bank_name, codes in BANK_USSD_CODES.items():
-        if bank_name in user_lower:
-            if 'balance' in user_lower:
-                return f"{bank_name.title()} Balance Check:\nDial: {codes['balance']}\nFollow prompts and enter PIN."
-            elif 'transfer' in user_lower:
-                return f"{bank_name.title()} Transfer:\nDial: {codes['transfer']}\nReplace Amount and AccountNumber."
-            elif 'airtime' in user_lower:
-                return f"{bank_name.title()} Airtime:\nDial: {codes['airtime']}\nReplace Amount and PhoneNumber."
-            else:
-                return f"{bank_name.title()} USSD Codes:\nMain: {codes['main']}\nBalance: {codes['balance']}\nTransfer: {codes['transfer']}\nAirtime: {codes['airtime']}"
-    
-    return "Nigerian Bank USSD Helper. Available banks: Access, GTB, UBA, Zenith, First Bank, and 12 others."
+Question: {user_message}
 
+Nigerian Bank USSD Codes:
+- Access Bank: *901# (Balance: *901*00#)
+- GTB: *737# (Balance: *737*6*1#)
+- Zenith Bank: *966# (Balance: *966*00#)
+- First Bank: *894# (Balance: *894*00#)
+- UBA: *919# (Balance: *919*00#)
+- Polaris Bank: *833# (Balance: *833*6#)
+- Union Bank: *826# (Balance: *826*7#)
+- 10 other Nigerian banks
+
+Answer directly and helpfully. Start with the actual information immediately:"""
+
+        response = model.generate_content(
+            prompt,
+            generation_config=genai.types.GenerationConfig(
+                max_output_tokens=350,
+                temperature=0.1,  # Very low temperature for deterministic responses
+                top_p=0.7,
+                top_k=40
+            )
+        )
+        
+        ai_response = response.text.strip()
+        print(f"RAW AI RESPONSE: {ai_response[:100]}...")
+        
+        # AGGRESSIVE cleaning of "fetching" language
+        forbidden_words = [
+            'fetching', 'retrieving', 'searching', 'looking up', 'getting', 'finding',
+            'Fetching', 'Retrieving', 'Searching', 'Looking up', 'Getting', 'Finding'
+        ]
+        
+        for word in forbidden_words:
+            ai_response = ai_response.replace(word, "")
+        
+        # Remove any "..." or incomplete sentences caused by replacements
+        ai_response = ai_response.replace("...", ".").replace("..", ".")
+        ai_response = ai_response.strip()
+        
+        # If the response starts with weird punctuation after cleaning, fix it
+        if ai_response and ai_response[0] in [',', '.', ';', ':']:
+            ai_response = ai_response[1:].strip()
+            
+        print(f"CLEANED AI RESPONSE: {ai_response[:100]}...")
+        return ai_response
+        
+    except Exception as ai_error:
+        print(f"AI ERROR: {ai_error}")
+        return None
 def generate_ai_response(user_message):
     """Generate intelligent AI responses without 'fetching' language"""
     try:
