@@ -1,85 +1,96 @@
 import json
-import google.generativeai as genai
 import os
 import time
-from django.http import JsonResponse
+import hashlib
+import hmac
+import threading
+from datetime import datetime
+from django.http import JsonResponse, HttpResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
 from dotenv import load_dotenv
+import google.generativeai as genai
 
-# Load environment variables from .env file
+# Load environment variables
 load_dotenv()
 
-# Configure Gemini AI with API key from environment variables
+# Gemini AI Configuration
+
 GEMINI_API_KEY = os.getenv('GEMINI_API_KEY')
 if GEMINI_API_KEY:
     genai.configure(api_key=GEMINI_API_KEY)
-    print(" Gemini AI configured successfully!")
+    print("Gemini AI configured successfully!")
 else:
-    print(" GEMINI_API_KEY not found")
+    print("GEMINI_API_KEY not found in .env")
 
 MODEL_NAME = 'gemini-2.0-flash-lite'
 
-# Complete database of Nigerian bank USSD codes
+#  Bank USSD Code Database
 BANK_USSD_CODES = {
     'access bank': {'balance': '*901*00#', 'transfer': '*901*Amount*AccountNumber#', 'airtime': '*901*Amount*PhoneNumber#', 'main': '*901#'},
     'gtb': {'balance': '*737*6*1#', 'transfer': '*737*1*Amount*AccountNumber#', 'airtime': '*737*Amount*PhoneNumber#', 'main': '*737#'},
     'zenith bank': {'balance': '*966*00#', 'transfer': '*966*Amount*AccountNumber#', 'airtime': '*966*Amount*PhoneNumber#', 'main': '*966#'},
     'first bank': {'balance': '*894*00#', 'transfer': '*894*Amount*AccountNumber#', 'airtime': '*894*Amount*PhoneNumber#', 'main': '*894#'},
     'uba': {'balance': '*919*00#', 'transfer': '*919*3*Amount*AccountNumber#', 'airtime': '*919*Amount*PhoneNumber#', 'main': '*919#'},
-    'polaris bank': {'balance': '*833*6#', 'transfer': '*833*1*Amount*AccountNumber#', 'airtime': '*833*Amount*PhoneNumber#', 'main': '*833#'},
-    'union bank': {'balance': '*826*7#', 'transfer': '*826*4*Amount*AccountNumber#', 'airtime': '*826*3*Amount*PhoneNumber#', 'main': '*826#'},
-    'fidelity bank': {'balance': '*770*00#', 'transfer': '*770*Amount*AccountNumber#', 'airtime': '*770*Amount*PhoneNumber#', 'main': '*770#'},
-    'ecobank': {'balance': '*326*00#', 'transfer': '*326*3*Amount*AccountNumber#', 'airtime': '*326*Amount*PhoneNumber#', 'main': '*326#'},
-    'wema bank': {'balance': '*945*00#', 'transfer': '*945*2*Amount*AccountNumber#', 'airtime': '*945*1*Amount*PhoneNumber#', 'main': '*945#'},
-    'sterling bank': {'balance': '*822*5#', 'transfer': '*822*1*Amount*AccountNumber#', 'airtime': '*822*2*Amount*PhoneNumber#', 'main': '*822#'},
-    'fcmb': {'balance': '*329*00#', 'transfer': '*329*Amount*AccountNumber#', 'airtime': '*329*Amount*PhoneNumber#', 'main': '*329#'},
-    'unity bank': {'balance': '*7799*0#', 'transfer': '*7799*2*Amount*AccountNumber#', 'airtime': '*7799*1*Amount*PhoneNumber#', 'main': '*7799#'},
-    'keystone bank': {'balance': '*7111*1#', 'transfer': '*7111*2*Amount*AccountNumber#', 'airtime': '*7111*3*Amount*PhoneNumber#', 'main': '*7111#'},
-    'stanbic ibtc': {'balance': '*909*3#', 'transfer': '*909*2*Amount*AccountNumber#', 'airtime': '*909*1*Amount*PhoneNumber#', 'main': '*909#'},
-    'jaiz bank': {'balance': '*773*3#', 'transfer': '*773*2*Amount*AccountNumber#', 'airtime': '*773*1*Amount*PhoneNumber#', 'main': '*773#'},
-    'heritage bank': {'balance': '*745*0#', 'transfer': '*745*1*Amount*AccountNumber#', 'airtime': '*745*2*Amount*PhoneNumber#', 'main': '*745#'}
 }
 
+# In-memory Cache (Simple)
+CACHE = {}  # key: user_message.lower(), value: response
+
+def get_cached_response(message):
+    return CACHE.get(message.lower())
+
+def set_cached_response(message, response):
+    if len(CACHE) > 50:  # avoid memory bloat
+        CACHE.clear()
+    CACHE[message.lower()] = response
+
+# Logging System
+LOG_FILE = "logs/ai_logs.json"
+os.makedirs("logs", exist_ok=True)
+
+def log_interaction(user_message, ai_response, source="unknown"):
+    log_entry = {
+        "timestamp": datetime.utcnow().isoformat(),
+        "source": source,
+        "user_message": user_message,
+        "ai_response": ai_response,
+    }
+    with open(LOG_FILE, "a", encoding="utf-8") as f:
+        f.write(json.dumps(log_entry) + "\n")
+
+# Telex Signature Verification
+TELEX_SECRET = os.getenv("TELEX_WEBHOOK_SECRET", "")
+
+def verify_telex_signature(request):
+    """Verify HMAC SHA256 signature of incoming Telex webhook"""
+    if not TELEX_SECRET:
+        return True  # skip verification if not set
+
+    signature = request.headers.get("X-Telex-Signature", "")
+    body = request.body
+    expected_sig = hmac.new(
+        TELEX_SECRET.encode(), body, hashlib.sha256
+    ).hexdigest()
+
+    return hmac.compare_digest(signature, expected_sig)
+
+# Gemini AI Function
 def generate_ai_response(user_message):
-    """
-    Generate AI responses for ALL queries using Gemini AI
-    """
+    """Generate a response using Gemini AI"""
     try:
-        print(f"Generating AI response for: {user_message}")
         model = genai.GenerativeModel(MODEL_NAME)
-        
-        # Comprehensive prompt for all types of queries
-        prompt = f"""You are a helpful Nigerian banking expert. Provide direct, immediate answers about Nigerian bank USSD codes and banking services.
+        prompt = f"""
+You are a helpful Nigerian banking expert. Provide direct, immediate answers about Nigerian bank USSD codes and services.
 
 User Question: "{user_message}"
 
-Nigerian Bank USSD Codes Database:
-- Access Bank: Balance *901*00#, Transfer *901*Amount*AccountNumber#, Airtime *901*Amount*PhoneNumber#
-- GTB: Balance *737*6*1#, Transfer *737*1*Amount*AccountNumber#, Airtime *737*Amount*PhoneNumber#
-- UBA: Balance *919*00#, Transfer *919*3*Amount*AccountNumber#, Airtime *919*Amount*PhoneNumber#
-- Zenith Bank: Balance *966*00#, Transfer *966*Amount*AccountNumber#, Airtime *966*Amount*PhoneNumber#
-- First Bank: Balance *894*00#, Transfer *894*Amount*AccountNumber#, Airtime *894*Amount*PhoneNumber#
-- Polaris Bank: Balance *833*6#, Transfer *833*1*Amount*AccountNumber#
-- Union Bank: Balance *826*7#, Transfer *826*4*Amount*AccountNumber#
-- 10 other major Nigerian banks available
-
-Instructions:
-- For USSD code requests: Provide the exact code immediately without introductory phrases
-- For security questions: Give direct security advice and best practices
-- For comparisons: Provide clear, helpful comparisons between banks
-- For general banking questions: Answer directly and informatively
-- NEVER use phrases like "fetching", "retrieving", "getting", "looking up", "I'll", "Let me"
-- ALWAYS provide immediate, direct answers
-- Include relevant USSD codes when applicable
-- Keep responses concise but helpful
-
-Examples:
-- "UBA balance" → "UBA Balance Check: Dial *919*00#"
-- "Is USSD banking safe?" → "USSD banking is secure when you: [direct security tips]"
-- "GTB transfer code" → "GTB Transfer: Dial *737*1*Amount*AccountNumber#"
-- "Compare Access Bank and GTB" → "Access Bank vs GTB: [direct comparison]" """
-
+Rules:
+- Give direct, factual answers. No filler.
+- Use exact USSD codes when relevant.
+- Keep answers under 100 words.
+- Example: "UBA balance" → "UBA Balance: Dial *919*00#"
+"""
         response = model.generate_content(
             prompt,
             generation_config=genai.types.GenerationConfig(
@@ -87,123 +98,85 @@ Examples:
                 temperature=0.7
             )
         )
-        
         ai_response = response.text.strip()
-
-        # Ensure response isn't too long
         if len(ai_response) > 1000:
             ai_response = ai_response[:1000] + "..."
-        print(f"AI response generated: {ai_response[:100]}...")
-        
         return ai_response
-        
-    except Exception as ai_error:
-        print(f"AI Error: {ai_error}")
-        # Fallback response if AI fails
-        return "I can help with Nigerian bank USSD codes. For balance checks, dial *901*00# for Access Bank, *737*6*1# for GTB, or *919*00# for UBA."
+    except Exception as e:
+        print(f" AI generation error: {e}")
+        return "Access Bank: *901*00# | GTB: *737*6*1# | UBA: *919*00# | Zenith: *966*00#"
 
-# Main agent endpoint - AI ONLY
+# Main AI Endpoint
 @csrf_exempt
 @require_http_methods(["POST"])
 def ussd_agent(request):
-    """
-    Main AI agent endpoint for Nigerian Bank USSD codes
-    Uses AI for ALL queries
-    """
+    """Main AI endpoint for Nigerian Bank USSD assistant"""
     try:
+        # Verify Telex signature (if configured)
+        if not verify_telex_signature(request):
+            return JsonResponse({"error": "Invalid signature"}, status=401)
+
         data = json.loads(request.body)
-        
-        # Support both A2A protocol (content field) and regular format (message field)
-        user_message = data.get('content', '').strip()
+        user_message = data.get('content') or data.get('message', '')
+        user_message = user_message.strip()
+
         if not user_message:
-            user_message = data.get('message', '').strip()
-            
-        print(f"Processing user query: {user_message}")
-        
-        # Health check endpoint for monitoring
-        if user_message.lower() in ['health', 'test', 'ping', 'status']:
+            return JsonResponse({"error": "No message provided"}, status=400)
+
+        # Health/test messages
+        if user_message.lower() in ["ping", "health", "status", "test"]:
             return JsonResponse({
                 "status": "healthy",
-                "service": "Nigerian Bank USSD AI Agent", 
                 "ai_available": bool(GEMINI_API_KEY),
+                "cache_size": len(CACHE),
                 "total_banks": len(BANK_USSD_CODES),
-                "mode": "ai-only"
             })
-        
-        # Use AI for ALL queries
-        if GEMINI_API_KEY:
-            try:
-                # Add a simple timeout mechanism
-                import threading
-                from django.http import JsonResponse
-                
-                ai_response = None
-                def generate_response():
-                    nonlocal ai_response
-                    ai_response = generate_ai_response(user_message)
-                
-                thread = threading.Thread(target=generate_response)
-                thread.start()
-                thread.join(timeout=60)  # 60 second timeout
-                
-                if thread.is_alive():
-                    # Thread timed out
-                    print("AI response timed out")
-                    ai_response = "I can help with Nigerian bank USSD codes. For quick codes: Access *901#, GTB *737#, UBA *919#"
-                
-                if ai_response:
-                    return JsonResponse({"content": ai_response, "type": "text"})
-                
-            except Exception as ai_error:
-                print(f"AI processing error: {ai_error}")
-        # Fallback if AI fails
-        return JsonResponse({
-            "content": "I can help with Nigerian bank USSD codes. Try asking about specific banks like UBA, GTB, or Access Bank.",
-            "type": "text"
-        })
-        
-    except Exception as e:
-        print(f"Error in ussd_agent: {e}")
-        return JsonResponse({
-            "content": "Access Bank: *901*00# | GTB: *737*6*1# | UBA: *919*00# | Zenith: *966*00#",
-            "type": "text"
-        })
 
-# A2A protocol health check endpoint
+        # Use cached result if available
+        cached = get_cached_response(user_message)
+        if cached:
+            print(f"🧠 Cache hit for '{user_message}'")
+            return JsonResponse({"content": cached, "cached": True, "type": "text"})
+
+        print(f" Processing: {user_message}")
+
+        ai_response = None
+        def worker():
+            nonlocal ai_response
+            ai_response = generate_ai_response(user_message)
+
+        thread = threading.Thread(target=worker)
+        thread.start()
+        thread.join(timeout=60)
+
+        if not ai_response:
+            ai_response = "I can help with Nigerian bank USSD codes. Try UBA *919#, GTB *737#, Access *901#."
+
+        # Cache + Log
+        set_cached_response(user_message, ai_response)
+        log_interaction(user_message, ai_response, source="telex")
+
+        return JsonResponse({"content": ai_response, "cached": False, "type": "text"})
+
+    except Exception as e:
+        print(f" Error: {e}")
+        return JsonResponse({"content": "Something went wrong. Try again."}, status=500)
+
+# A2A Health Endpoint
 @csrf_exempt
 def a2a_health(request):
-    """
-    Health check endpoint for A2A protocol compliance
-    """
+    """A2A protocol health check"""
     return JsonResponse({
         "status": "healthy",
-        "service": "Nigerian Bank USSD AI Agent",
-        "a2a_protocol": "supported",
         "ai_available": bool(GEMINI_API_KEY),
+        "a2a_protocol": "supported",
         "total_banks": len(BANK_USSD_CODES),
-        "mode": "ai-only"
     })
 
-# Test endpoint to verify AI functionality
-@csrf_exempt
-@require_http_methods(["POST"])
-def test_ai(request):
-    """Test endpoint to verify Gemini AI is working correctly"""
-    if not GEMINI_API_KEY:
-        return JsonResponse({"error": "No API key"}, status=500)
-    
-    try:
-        model = genai.GenerativeModel(MODEL_NAME)
-        response = model.generate_content(
-            "What is 2+2? Answer with one number only."
-        )
-        return JsonResponse({
-            "ai_working": True,
-            "response": response.text,
-            "model": MODEL_NAME
-        })
-    except Exception as e:
-        return JsonResponse({
-            "ai_working": False,
-            "error": str(e)
-        }, status=500)
+# Root Index Endpoint
+def index(request):
+    """Simple landing route"""
+    return HttpResponse(
+        "<h3> Nigerian Bank USSD AI Agent</h3><p>Status: Running</p>",
+        content_type="text/html"
+    )
