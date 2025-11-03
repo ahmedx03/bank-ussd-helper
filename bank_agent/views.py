@@ -42,7 +42,12 @@ def ussd_agent(request):
     """
     try:
         data = json.loads(request.body)
-        user_message = data.get('message', '').strip()
+        
+        # SUPPORT BOTH A2A PROTOCOL AND YOUR EXISTING FORMAT
+        user_message = data.get('content', '').strip()  # A2A protocol uses 'content'
+        if not user_message:
+            user_message = data.get('message', '').strip()  # Fallback to your existing 'message'
+            
         user_lower = user_message.lower()
         
         print(f"USER QUERY: {user_message}")
@@ -62,21 +67,23 @@ def ussd_agent(request):
             ai_response = generate_ai_response(user_message)
             if ai_response and len(ai_response) > 20:
                 print("AI RESPONSE SUCCESSFUL")
-                return JsonResponse({"message": ai_response, "type": "text"})
+                # RETURN A2A PROTOCOL FORMAT
+                return JsonResponse({"content": ai_response, "type": "text"})
             else:
                 print("AI RESPONSE FAILED")
         
         # Fallback to direct response
         response = generate_direct_ussd_response(user_lower)
-        return JsonResponse({"message": response, "type": "text"})
+        # RETURN A2A PROTOCOL FORMAT
+        return JsonResponse({"content": response, "type": "text"})
         
     except Exception as e:
         print(f"ERROR: {e}")
+        # RETURN A2A PROTOCOL FORMAT
         return JsonResponse({
-            "message": "First Bank Balance: *894*00#\nGTB Balance: *737*6*1#\nUBA Balance: *919*00#",
+            "content": "First Bank Balance: *894*00#\nGTB Balance: *737*6*1#\nUBA Balance: *919*00#",
             "type": "text"
         })
-
 def is_very_simple_direct_query(user_lower):
     """Only return True for VERY simple direct queries"""
     simple_patterns = ['balance', 'transfer', 'airtime', 'data']
@@ -171,3 +178,16 @@ def test_ai(request):
             "ai_working": False,
             "error": str(e)
         }, status=500)
+
+@csrf_exempt
+def a2a_health(request):
+    """
+    A2A Protocol health check endpoint
+    """
+    return JsonResponse({
+        "status": "healthy",
+        "service": "Nigerian Bank USSD AI Agent",
+        "a2a_protocol": "supported",
+        "ai_available": bool(GEMINI_API_KEY),
+        "total_banks": len(BANK_USSD_CODES)
+    })
