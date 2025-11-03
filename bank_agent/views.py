@@ -59,21 +59,6 @@ def log_interaction(user_message, ai_response, source="unknown"):
     with open(LOG_FILE, "a", encoding="utf-8") as f:
         f.write(json.dumps(log_entry) + "\n")
 
-# Telex Signature Verification
-TELEX_SECRET = os.getenv("TELEX_WEBHOOK_SECRET", "")
-
-def verify_telex_signature(request):
-    """Verify HMAC SHA256 signature of incoming Telex webhook"""
-    if not TELEX_SECRET:
-        return True  # skip verification if not set
-
-    signature = request.headers.get("X-Telex-Signature", "")
-    body = request.body
-    expected_sig = hmac.new(
-        TELEX_SECRET.encode(), body, hashlib.sha256
-    ).hexdigest()
-
-    return hmac.compare_digest(signature, expected_sig)
 
 # Gemini AI Function
 def generate_ai_response(user_message):
