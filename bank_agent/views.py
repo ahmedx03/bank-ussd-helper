@@ -115,46 +115,38 @@ def generate_direct_ussd_response(user_lower):
     return "Nigerian Bank USSD Helper. Available banks: Access, GTB, UBA, Zenith, First Bank, and 12 others."
 
 def generate_ai_response(user_message):
-    """Generate AI response with CORRECT API syntax"""
+    """Generate intelligent AI responses without 'fetching' language"""
     try:
-        print("CALLING GEMINI AI...")
         model = genai.GenerativeModel(MODEL_NAME)
         
-        prompt = f"""You are a Nigerian banking expert. Answer this question helpfully:
+        prompt = f"""You are a helpful Nigerian banking AI assistant. Provide immediate, direct answers.
 
-User: {user_message}
+Question: {user_message}
 
-Nigerian Bank USSD Codes:
+Available Bank USSD Codes:
 - Access Bank: *901# (Balance: *901*00#)
-- GTB: *737# (Balance: *737*6*1#)
-- Zenith Bank: *966# (Balance: *966*00#)
-- First Bank: *894# (Balance: *894*00#)
+- GTB: *737# (Balance: *737*6*1#) 
 - UBA: *919# (Balance: *919*00#)
-- Polaris Bank: *833# (Balance: *833*6#)
-- Union Bank: *826# (Balance: *826*7#)
-- 10 other banks available
+- 14 other Nigerian banks
 
-Provide a helpful response about Nigerian bank USSD services."""
+CRITICAL: Answer directly without using words like "fetching", "retrieving", or "searching". Provide the information immediately.
 
-        # FIXED: Remove request_options parameter
+Response:"""
+
         response = model.generate_content(
             prompt,
             generation_config=genai.types.GenerationConfig(
-                max_output_tokens=400,
-                temperature=0.7
+                max_output_tokens=300,
+                temperature=0.2,  # More deterministic
+                top_p=0.8
             )
-            # REMOVED: request_options={"timeout": 10}
         )
         
-        ai_response = response.text.strip()
-        print(f"AI RESPONSE: {ai_response[:100]}...")
-        
-        return ai_response
+        return response.text.strip()
         
     except Exception as ai_error:
-        print(f"AI ERROR: {ai_error}")
         return None
-
+    
 # Add the missing test-ai endpoint
 @csrf_exempt
 @require_http_methods(["POST"])
