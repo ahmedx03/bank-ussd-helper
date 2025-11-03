@@ -69,7 +69,7 @@ TEMPLATES = [
     },
 ]
 
-WSGI_APPLICATION = 'ussd_helper.wsgi:application'
+WSGI_APPLICATION = 'ussd_helper.wsgi.application'
 
 # No password validators
 AUTH_PASSWORD_VALIDATORS = []
