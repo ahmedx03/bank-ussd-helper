@@ -5,20 +5,22 @@ import time
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
-from dotenv import load_dotenv  # ADD THIS
+from dotenv import load_dotenv
 
 # Load environment variables from .env file
-load_dotenv() 
+load_dotenv()
 
 # Configure Gemini AI with API key from environment variables
 GEMINI_API_KEY = os.getenv('GEMINI_API_KEY')
 if GEMINI_API_KEY:
     genai.configure(api_key=GEMINI_API_KEY)
+    print("✅ Gemini AI configured successfully!")
+else:
+    print("❌ GEMINI_API_KEY not found")
 
 MODEL_NAME = 'gemini-2.0-flash-lite'
 
 # Complete database of Nigerian bank USSD codes
-# Contains all major Nigerian banks with their USSD codes for different services
 BANK_USSD_CODES = {
     'access bank': {'balance': '*901*00#', 'transfer': '*901*Amount*AccountNumber#', 'airtime': '*901*Amount*PhoneNumber#', 'main': '*901#'},
     'gtb': {'balance': '*737*6*1#', 'transfer': '*737*1*Amount*AccountNumber#', 'airtime': '*737*Amount*PhoneNumber#', 'main': '*737#'},
@@ -39,101 +41,74 @@ BANK_USSD_CODES = {
     'heritage bank': {'balance': '*745*0#', 'transfer': '*745*1*Amount*AccountNumber#', 'airtime': '*745*2*Amount*PhoneNumber#', 'main': '*745#'}
 }
 
-# Helper function to determine if a query is simple enough for direct response
-# This helps decide whether to use AI or just return direct USSD codes
-def is_very_simple_direct_query(user_lower):
-    """
-    Check if the user query is a simple request for USSD codes
-    Returns True for basic queries like 'uba balance', False for complex questions
-    """
-    simple_patterns = ['balance', 'transfer', 'airtime', 'data']
-    
-    banks = list(BANK_USSD_CODES.keys())
-    bank_found = any(bank in user_lower for bank in banks)
-    service_found = any(pattern in user_lower for pattern in simple_patterns)
-    
-    # If it's a bank + service query with few words, use direct response
-    if bank_found and service_found:
-        words = user_lower.split()
-        if len(words) <= 3:
-            return True
-    
-    return False
-
-# Generate direct USSD code responses without using AI
-# This provides instant responses for simple code requests
-def generate_direct_ussd_response(user_lower):
-    """
-    Generate direct USSD code responses for simple queries
-    Returns formatted USSD codes without AI processing
-    """
-    for bank_name, codes in BANK_USSD_CODES.items():
-        if bank_name in user_lower:
-            if 'balance' in user_lower:
-                return f"{bank_name.title()} Balance Check:\nDial: {codes['balance']}\nFollow prompts and enter PIN."
-            elif 'transfer' in user_lower:
-                return f"{bank_name.title()} Transfer:\nDial: {codes['transfer']}\nReplace Amount and AccountNumber."
-            elif 'airtime' in user_lower:
-                return f"{bank_name.title()} Airtime:\nDial: {codes['airtime']}\nReplace Amount and PhoneNumber."
-            else:
-                return f"{bank_name.title()} USSD Codes:\nMain: {codes['main']}\nBalance: {codes['balance']}\nTransfer: {codes['transfer']}\nAirtime: {codes['airtime']}"
-    
-    return "Nigerian Bank USSD Helper. Available banks: Access, GTB, UBA, Zenith, First Bank, and 12 others."
-
-# Generate AI-powered responses using Google Gemini
-# This handles complex questions that need intelligent answers
 def generate_ai_response(user_message):
     """
-    Generate intelligent AI responses for complex banking questions
-    Uses Google Gemini AI to provide helpful, contextual answers
+    Generate AI responses for ALL queries using Gemini AI
     """
     try:
-        print("Calling Gemini AI for intelligent response...")
+        print(f"Generating AI response for: {user_message}")
         model = genai.GenerativeModel(MODEL_NAME)
         
-        # Prompt designed to get direct, helpful responses without 'fetching' language
-        prompt = f"""You are a Nigerian banking expert. Answer this question helpfully and directly:
+        # Comprehensive prompt for all types of queries
+        prompt = f"""You are a helpful Nigerian banking expert. Provide direct, immediate answers about Nigerian bank USSD codes and banking services.
 
-User: {user_message}
+User Question: "{user_message}"
 
-Nigerian Bank USSD Codes:
-- Access Bank: *901# (Balance: *901*00#)
-- GTB: *737# (Balance: *737*6*1#)
-- Zenith Bank: *966# (Balance: *966*00#)
-- First Bank: *894# (Balance: *894*00#)
-- UBA: *919# (Balance: *919*00#)
-- Polaris Bank: *833# (Balance: *833*6#)
-- Union Bank: *826# (Balance: *826*7#)
-- 10 other banks available
+Nigerian Bank USSD Codes Database:
+- Access Bank: Balance *901*00#, Transfer *901*Amount*AccountNumber#, Airtime *901*Amount*PhoneNumber#
+- GTB: Balance *737*6*1#, Transfer *737*1*Amount*AccountNumber#, Airtime *737*Amount*PhoneNumber#
+- UBA: Balance *919*00#, Transfer *919*3*Amount*AccountNumber#, Airtime *919*Amount*PhoneNumber#
+- Zenith Bank: Balance *966*00#, Transfer *966*Amount*AccountNumber#, Airtime *966*Amount*PhoneNumber#
+- First Bank: Balance *894*00#, Transfer *894*Amount*AccountNumber#, Airtime *894*Amount*PhoneNumber#
+- Polaris Bank: Balance *833*6#, Transfer *833*1*Amount*AccountNumber#
+- Union Bank: Balance *826*7#, Transfer *826*4*Amount*AccountNumber#
+- 10 other major Nigerian banks available
 
-Provide a helpful response about Nigerian bank USSD services. Answer directly without saying you are fetching or retrieving information."""
+Instructions:
+- For USSD code requests: Provide the exact code immediately without introductory phrases
+- For security questions: Give direct security advice and best practices
+- For comparisons: Provide clear, helpful comparisons between banks
+- For general banking questions: Answer directly and informatively
+- NEVER use phrases like "fetching", "retrieving", "getting", "looking up", "I'll", "Let me"
+- ALWAYS provide immediate, direct answers
+- Include relevant USSD codes when applicable
+- Keep responses concise but helpful
+
+Examples:
+- "UBA balance" → "UBA Balance Check: Dial *919*00#"
+- "Is USSD banking safe?" → "USSD banking is secure when you: [direct security tips]"
+- "GTB transfer code" → "GTB Transfer: Dial *737*1*Amount*AccountNumber#"
+- "Compare Access Bank and GTB" → "Access Bank vs GTB: [direct comparison]" """
 
         response = model.generate_content(
             prompt,
             generation_config=genai.types.GenerationConfig(
-                max_output_tokens=400,
+                max_output_tokens=300,
                 temperature=0.7
             )
         )
         
         ai_response = response.text.strip()
-        print(f"AI response generated successfully")
+
+        # Ensure response isn't too long
+        if len(ai_response) > 1000:
+            ai_response = ai_response[:1000] + "..."
+        print(f"AI response generated: {ai_response[:100]}...")
         
         return ai_response
         
     except Exception as ai_error:
         print(f"AI Error: {ai_error}")
-        return None
+        # Fallback response if AI fails
+        return "I can help with Nigerian bank USSD codes. For balance checks, dial *901*00# for Access Bank, *737*6*1# for GTB, or *919*00# for UBA."
 
-# Main agent endpoint that handles all incoming requests
-# Supports both A2A protocol and regular JSON formats
+# Main agent endpoint - AI ONLY
 @csrf_exempt
 @require_http_methods(["POST"])
 def ussd_agent(request):
     """
     Main AI agent endpoint for Nigerian Bank USSD codes
-    Handles both simple code requests and complex AI questions
-    Compatible with Telex.im A2A protocol
+    Uses AI for ALL queries
     """
     try:
         data = json.loads(request.body)
@@ -143,42 +118,71 @@ def ussd_agent(request):
         if not user_message:
             user_message = data.get('message', '').strip()
             
-        user_lower = user_message.lower()
-        
         print(f"Processing user query: {user_message}")
         
         # Health check endpoint for monitoring
-        if user_lower in ['health', 'test', 'ping', 'status']:
+        if user_message.lower() in ['health', 'test', 'ping', 'status']:
             return JsonResponse({
                 "status": "healthy",
                 "service": "Nigerian Bank USSD AI Agent", 
                 "ai_available": bool(GEMINI_API_KEY),
-                "total_banks": len(BANK_USSD_CODES)
+                "total_banks": len(BANK_USSD_CODES),
+                "mode": "ai-only"
             })
         
-        # Use AI for complex questions, direct responses for simple code requests
-        if GEMINI_API_KEY and not is_very_simple_direct_query(user_lower):
-            print("Using AI for complex query...")
-            ai_response = generate_ai_response(user_message)
-            if ai_response and len(ai_response) > 20:
-                print("AI response successful")
-                # Return in A2A protocol format
-                return JsonResponse({"content": ai_response, "type": "text"})
-            else:
-                print("AI response failed, using fallback")
-        
-        # Fallback to direct USSD code responses
-        response = generate_direct_ussd_response(user_lower)
-        # Return in A2A protocol format
-        return JsonResponse({"content": response, "type": "text"})
+        # Use AI for ALL queries
+        if GEMINI_API_KEY:
+            try:
+                # Add a simple timeout mechanism
+                import threading
+                from django.http import JsonResponse
+                
+                ai_response = None
+                def generate_response():
+                    nonlocal ai_response
+                    ai_response = generate_ai_response(user_message)
+                
+                thread = threading.Thread(target=generate_response)
+                thread.start()
+                thread.join(timeout=10)  # 10 second timeout
+                
+                if thread.is_alive():
+                    # Thread timed out
+                    print("AI response timed out")
+                    ai_response = "I can help with Nigerian bank USSD codes. For quick codes: Access *901#, GTB *737#, UBA *919#"
+                
+                if ai_response:
+                    return JsonResponse({"content": ai_response, "type": "text"})
+                
+            except Exception as ai_error:
+                print(f"AI processing error: {ai_error}")
+        # Fallback if AI fails
+        return JsonResponse({
+            "content": "I can help with Nigerian bank USSD codes. Try asking about specific banks like UBA, GTB, or Access Bank.",
+            "type": "text"
+        })
         
     except Exception as e:
         print(f"Error in ussd_agent: {e}")
-        # Emergency fallback response
         return JsonResponse({
-            "content": "First Bank Balance: *894*00#\nGTB Balance: *737*6*1#\nUBA Balance: *919*00#",
+            "content": "Access Bank: *901*00# | GTB: *737*6*1# | UBA: *919*00# | Zenith: *966*00#",
             "type": "text"
         })
+
+# A2A protocol health check endpoint
+@csrf_exempt
+def a2a_health(request):
+    """
+    Health check endpoint for A2A protocol compliance
+    """
+    return JsonResponse({
+        "status": "healthy",
+        "service": "Nigerian Bank USSD AI Agent",
+        "a2a_protocol": "supported",
+        "ai_available": bool(GEMINI_API_KEY),
+        "total_banks": len(BANK_USSD_CODES),
+        "mode": "ai-only"
+    })
 
 # Test endpoint to verify AI functionality
 @csrf_exempt
@@ -203,18 +207,3 @@ def test_ai(request):
             "ai_working": False,
             "error": str(e)
         }, status=500)
-
-# A2A protocol health check endpoint required by Telex.im
-@csrf_exempt
-def a2a_health(request):
-    """
-    Health check endpoint for A2A protocol compliance
-    Required by Telex.im to verify agent status
-    """
-    return JsonResponse({
-        "status": "healthy",
-        "service": "Nigerian Bank USSD AI Agent",
-        "a2a_protocol": "supported",
-        "ai_available": bool(GEMINI_API_KEY),
-        "total_banks": len(BANK_USSD_CODES)
-    })
