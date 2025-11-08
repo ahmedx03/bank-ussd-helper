@@ -150,11 +150,11 @@ def ussd_agent(request):
                 "jsonrpc": "2.0",
                 "id": request_id,
                 "result": {
-                    "task": {
+                    "Task": {
                         "id": f"task-{request_id}",
                         "status": "completed"
                     },
-                    "message": {
+                    "Message": {
                         "id": f"msg-{request_id}",
                         "kind": "message",
                         "role": "assistant",
@@ -190,16 +190,16 @@ def ussd_agent(request):
                     ai_response = "I can help with Nigerian bank USSD codes. For quick codes: Access *901#, GTB *737#, UBA *919#"
                 
                 if ai_response:
-                    #  TELEx A2A COMPLIANT RESPONSE
+                    # ✅ TELEx CAMELCASE A2A COMPLIANT RESPONSE
                     response_data = {
                         "jsonrpc": "2.0",
                         "id": request_id,
                         "result": {
-                            "task": {
+                            "Task": {
                                 "id": f"task-{request_id}",
                                 "status": "completed"
                             },
-                            "message": {
+                            "Message": {
                                 "id": f"msg-{request_id}",
                                 "kind": "message",
                                 "role": "assistant",
@@ -212,7 +212,7 @@ def ussd_agent(request):
                             }
                         }
                     }
-                    print(f" SENDING TELEx A2A RESPONSE: {ai_response}")
+                    print(f" SENDING TELEx CAMELCASE RESPONSE: {ai_response}")
                     return JsonResponse(response_data)
                 
             except Exception as ai_error:
@@ -222,11 +222,11 @@ def ussd_agent(request):
             "jsonrpc": "2.0",
             "id": request_id,
             "result": {
-                "task": {
+                "Task": {
                     "id": f"task-{request_id}",
                     "status": "completed"
                 },
-                "message": {
+                "Message": {
                     "id": f"msg-{request_id}",
                     "kind": "message",
                     "role": "assistant",
