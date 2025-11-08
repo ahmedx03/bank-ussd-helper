@@ -102,7 +102,6 @@ Examples:
         # Fallback response if AI fails
         return "I can help with Nigerian bank USSD codes. For balance checks, dial *901*00# for Access Bank, *737*6*1# for GTB, or *919*00# for UBA."
 
-# Main agent endpoint 
 @csrf_exempt
 @require_http_methods(["POST"])
 def ussd_agent(request):
@@ -151,8 +150,13 @@ def ussd_agent(request):
                 "jsonrpc": "2.0",
                 "id": request_id,
                 "result": {
+                    "task": {
+                        "id": f"task-{request_id}",
+                        "status": "completed"
+                    },
                     "message": {
-                        "kind": "message", 
+                        "id": f"msg-{request_id}",
+                        "kind": "message",
                         "role": "assistant",
                         "parts": [
                             {
@@ -168,6 +172,7 @@ def ussd_agent(request):
         # Use AI for ALL queries
         if GEMINI_API_KEY:
             try:
+                # Add a simple timeout mechanism
                 import threading
                 
                 ai_response = None
@@ -185,12 +190,18 @@ def ussd_agent(request):
                     ai_response = "I can help with Nigerian bank USSD codes. For quick codes: Access *901#, GTB *737#, UBA *919#"
                 
                 if ai_response:
+                    #  TELEx A2A COMPLIANT RESPONSE
                     response_data = {
                         "jsonrpc": "2.0",
                         "id": request_id,
                         "result": {
+                            "task": {
+                                "id": f"task-{request_id}",
+                                "status": "completed"
+                            },
                             "message": {
-                                "kind": "message", 
+                                "id": f"msg-{request_id}",
+                                "kind": "message",
                                 "role": "assistant",
                                 "parts": [
                                     {
@@ -201,7 +212,7 @@ def ussd_agent(request):
                             }
                         }
                     }
-                    print(f" SENDING A2A RESPONSE: {ai_response}")
+                    print(f" SENDING TELEx A2A RESPONSE: {ai_response}")
                     return JsonResponse(response_data)
                 
             except Exception as ai_error:
@@ -211,8 +222,13 @@ def ussd_agent(request):
             "jsonrpc": "2.0",
             "id": request_id,
             "result": {
+                "task": {
+                    "id": f"task-{request_id}",
+                    "status": "completed"
+                },
                 "message": {
-                    "kind": "message", 
+                    "id": f"msg-{request_id}",
+                    "kind": "message",
                     "role": "assistant",
                     "parts": [
                         {
@@ -230,7 +246,7 @@ def ussd_agent(request):
         import traceback
         print(f"Traceback: {traceback.format_exc()}")
         
-        # Error response in A2A format
+        # Error response in TELEx A2A format
         error_response = {
             "jsonrpc": "2.0",
             "id": data.get('id', '1') if 'data' in locals() else '1',
@@ -240,7 +256,7 @@ def ussd_agent(request):
             }
         }
         return JsonResponse(error_response, status=500)
-    
+        
 # A2A protocol health check endpoint
 @csrf_exempt
 def a2a_health(request):
