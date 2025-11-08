@@ -151,8 +151,8 @@ def ussd_agent(request):
                 "id": request_id,
                 "result": {
                     "id": f"task-{request_id}",
-                    "status": "completed",
-                    "role": "assistant",
+                    "status": "succeeded",  # 
+                    "role": "agent",        # 
                     "parts": [
                         {
                             "kind": "text",
@@ -184,14 +184,14 @@ def ussd_agent(request):
                     ai_response = "I can help with Nigerian bank USSD codes. For quick codes: Access *901#, GTB *737#, UBA *919#"
                 
                 if ai_response:
-                    # TELEx DIRECT FIELDS A2A COMPLIANT RESPONSE
+                    # TELEx ENUM COMPLIANT A2A RESPONSE
                     response_data = {
                         "jsonrpc": "2.0",
                         "id": request_id,
                         "result": {
                             "id": f"task-{request_id}",
-                            "status": "completed",
-                            "role": "assistant",
+                            "status": "succeeded",  
+                            "role": "agent",        
                             "parts": [
                                 {
                                     "kind": "text",
@@ -200,20 +200,20 @@ def ussd_agent(request):
                             ]
                         }
                     }
-                    print(f" SENDING TELEx DIRECT FIELDS RESPONSE: {ai_response}")
+                    print(f" SENDING TELEx ENUM COMPLIANT RESPONSE: {ai_response}")
                     return JsonResponse(response_data)
                 
             except Exception as ai_error:
                 print(f"AI processing error: {ai_error}")
         
-        # Fallback if AI fails - STILL IN TELEx DIRECT FIELDS A2A FORMAT
+        # Fallback if AI fails - STILL IN TELEx ENUM A2A FORMAT
         response_data = {
             "jsonrpc": "2.0",
             "id": request_id,
             "result": {
                 "id": f"task-{request_id}",
-                "status": "completed",
-                "role": "assistant",
+                "status": "succeeded",  
+                "role": "agent",        
                 "parts": [
                     {
                         "kind": "text",
