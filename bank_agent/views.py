@@ -102,40 +102,73 @@ Examples:
         # Fallback response if AI fails
         return "I can help with Nigerian bank USSD codes. For balance checks, dial *901*00# for Access Bank, *737*6*1# for GTB, or *919*00# for UBA."
 
-# Main agent endpoint - AI ONLY
+# Main agent endpoint 
 @csrf_exempt
 @require_http_methods(["POST"])
 def ussd_agent(request):
     """
     Main AI agent endpoint for Nigerian Bank USSD codes
-    Uses AI for ALL queries
     """
     try:
         data = json.loads(request.body)
+        print(f" INCOMING REQUEST: {json.dumps(data, indent=2)[:500]}...")
         
-        # Support both A2A protocol (content field) and regular format (message field)
-        user_message = data.get('content', '').strip()
+        # A2A PROTOCOL PARSING
+        user_message = ""
+        request_id = data.get('id', '1')
+        
+        # Handle A2A JSON-RPC format
+        if 'method' in data and data.get('method') == 'message/send':
+            if 'params' in data and 'message' in data['params']:
+                message_obj = data['params']['message']
+                
+                # Extract text from parts
+                if 'parts' in message_obj:
+                    for part in message_obj['parts']:
+                        if part.get('kind') == 'text':
+                            text_content = part.get('text', '').strip()
+                            if text_content:
+                                user_message = text_content
+                                break
+                        elif part.get('kind') == 'data':
+                            data_parts = part.get('data', [])
+                            for data_item in data_parts:
+                                if data_item.get('kind') == 'text':
+                                    text_content = data_item.get('text', '').strip()
+                                    if text_content:
+                                        user_message = text_content
+                                        break
+        
+        # Fallback for simple format
         if not user_message:
-            user_message = data.get('message', '').strip()
+            user_message = data.get('message', data.get('content', '')).strip()
             
-        print(f"Processing user query: {user_message}")
+        print(f" EXTRACTED MESSAGE: '{user_message}'")
         
         # Health check endpoint for monitoring
-        if user_message.lower() in ['health', 'test', 'ping', 'status']:
-            return JsonResponse({
-                "status": "healthy",
-                "service": "Nigerian Bank USSD AI Agent", 
-                "ai_available": bool(GEMINI_API_KEY),
-                "total_banks": len(BANK_USSD_CODES),
-                "mode": "ai-only"
-            })
+        if not user_message or user_message.lower() in ['health', 'test', 'ping', 'status']:
+            response_data = {
+                "jsonrpc": "2.0",
+                "id": request_id,
+                "result": {
+                    "message": {
+                        "kind": "message", 
+                        "role": "assistant",
+                        "parts": [
+                            {
+                                "kind": "text",
+                                "text": "Healthy - Nigerian Bank USSD AI Agent"
+                            }
+                        ]
+                    }
+                }
+            }
+            return JsonResponse(response_data)
         
         # Use AI for ALL queries
         if GEMINI_API_KEY:
             try:
-                # Add a simple timeout mechanism
                 import threading
-                from django.http import JsonResponse
                 
                 ai_response = None
                 def generate_response():
@@ -144,7 +177,7 @@ def ussd_agent(request):
                 
                 thread = threading.Thread(target=generate_response)
                 thread.start()
-                thread.join(timeout=60)  # 60 second timeout
+                thread.join(timeout=10)  # 10 second timeout
                 
                 if thread.is_alive():
                     # Thread timed out
@@ -152,23 +185,62 @@ def ussd_agent(request):
                     ai_response = "I can help with Nigerian bank USSD codes. For quick codes: Access *901#, GTB *737#, UBA *919#"
                 
                 if ai_response:
-                    return JsonResponse({"content": ai_response, "type": "text"})
+                    response_data = {
+                        "jsonrpc": "2.0",
+                        "id": request_id,
+                        "result": {
+                            "message": {
+                                "kind": "message", 
+                                "role": "assistant",
+                                "parts": [
+                                    {
+                                        "kind": "text",
+                                        "text": ai_response
+                                    }
+                                ]
+                            }
+                        }
+                    }
+                    print(f" SENDING A2A RESPONSE: {ai_response}")
+                    return JsonResponse(response_data)
                 
             except Exception as ai_error:
                 print(f"AI processing error: {ai_error}")
-        # Fallback if AI fails
-        return JsonResponse({
-            "content": "I can help with Nigerian bank USSD codes. Try asking about specific banks like UBA, GTB, or Access Bank.",
-            "type": "text"
-        })
+        
+        response_data = {
+            "jsonrpc": "2.0",
+            "id": request_id,
+            "result": {
+                "message": {
+                    "kind": "message", 
+                    "role": "assistant",
+                    "parts": [
+                        {
+                            "kind": "text",
+                            "text": "I can help with Nigerian bank USSD codes. Try asking about specific banks like UBA, GTB, or Access Bank."
+                        }
+                    ]
+                }
+            }
+        }
+        return JsonResponse(response_data)
         
     except Exception as e:
-        print(f"Error in ussd_agent: {e}")
-        return JsonResponse({
-            "content": "Access Bank: *901*00# | GTB: *737*6*1# | UBA: *919*00# | Zenith: *966*00#",
-            "type": "text"
-        })
-
+        print(f" Error in ussd_agent: {e}")
+        import traceback
+        print(f"Traceback: {traceback.format_exc()}")
+        
+        # Error response in A2A format
+        error_response = {
+            "jsonrpc": "2.0",
+            "id": data.get('id', '1') if 'data' in locals() else '1',
+            "error": {
+                "code": -32000,
+                "message": "Internal server error"
+            }
+        }
+        return JsonResponse(error_response, status=500)
+    
 # A2A protocol health check endpoint
 @csrf_exempt
 def a2a_health(request):
