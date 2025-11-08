@@ -150,21 +150,15 @@ def ussd_agent(request):
                 "jsonrpc": "2.0",
                 "id": request_id,
                 "result": {
-                    "Task": {
-                        "id": f"task-{request_id}",
-                        "status": "completed"
-                    },
-                    "Message": {
-                        "id": f"msg-{request_id}",
-                        "kind": "message",
-                        "role": "assistant",
-                        "parts": [
-                            {
-                                "kind": "text",
-                                "text": "Healthy - Nigerian Bank USSD AI Agent"
-                            }
-                        ]
-                    }
+                    "id": f"task-{request_id}",
+                    "status": "completed",
+                    "role": "assistant",
+                    "parts": [
+                        {
+                            "kind": "text",
+                            "text": "Healthy - Nigerian Bank USSD AI Agent"
+                        }
+                    ]
                 }
             }
             return JsonResponse(response_data)
@@ -190,53 +184,42 @@ def ussd_agent(request):
                     ai_response = "I can help with Nigerian bank USSD codes. For quick codes: Access *901#, GTB *737#, UBA *919#"
                 
                 if ai_response:
-                    # ✅ TELEx CAMELCASE A2A COMPLIANT RESPONSE
+                    # TELEx DIRECT FIELDS A2A COMPLIANT RESPONSE
                     response_data = {
                         "jsonrpc": "2.0",
                         "id": request_id,
                         "result": {
-                            "Task": {
-                                "id": f"task-{request_id}",
-                                "status": "completed"
-                            },
-                            "Message": {
-                                "id": f"msg-{request_id}",
-                                "kind": "message",
-                                "role": "assistant",
-                                "parts": [
-                                    {
-                                        "kind": "text",
-                                        "text": ai_response
-                                    }
-                                ]
-                            }
+                            "id": f"task-{request_id}",
+                            "status": "completed",
+                            "role": "assistant",
+                            "parts": [
+                                {
+                                    "kind": "text",
+                                    "text": ai_response
+                                }
+                            ]
                         }
                     }
-                    print(f" SENDING TELEx CAMELCASE RESPONSE: {ai_response}")
+                    print(f" SENDING TELEx DIRECT FIELDS RESPONSE: {ai_response}")
                     return JsonResponse(response_data)
                 
             except Exception as ai_error:
                 print(f"AI processing error: {ai_error}")
         
+        # Fallback if AI fails - STILL IN TELEx DIRECT FIELDS A2A FORMAT
         response_data = {
             "jsonrpc": "2.0",
             "id": request_id,
             "result": {
-                "Task": {
-                    "id": f"task-{request_id}",
-                    "status": "completed"
-                },
-                "Message": {
-                    "id": f"msg-{request_id}",
-                    "kind": "message",
-                    "role": "assistant",
-                    "parts": [
-                        {
-                            "kind": "text",
-                            "text": "I can help with Nigerian bank USSD codes. Try asking about specific banks like UBA, GTB, or Access Bank."
-                        }
-                    ]
-                }
+                "id": f"task-{request_id}",
+                "status": "completed",
+                "role": "assistant",
+                "parts": [
+                    {
+                        "kind": "text",
+                        "text": "I can help with Nigerian bank USSD codes. Try asking about specific banks like UBA, GTB, or Access Bank."
+                    }
+                ]
             }
         }
         return JsonResponse(response_data)
